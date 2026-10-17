@@ -1,45 +1,129 @@
 # Assassin's Creed Pirates sur téléphone ARM64 uniquement
 
-Le jeu (2.9.1) n'existe qu'en ARM 32 bits. Ce projet remplace sa bibliothèque native
-`libSparkApp.so` par un runtime ARM64 qui charge le code ARM32 d'origine et l'exécute avec
-**Dynarmic** (traduction ARM32 → ARM64/x86-64 à la volée). Le reste de l'APK (Java, ressources, OBB)
-est conservé.
+Assassin's Creed Pirates (Ubisoft, version 2.9.1) n'existe qu'en ARM 32 bits : les téléphones récents qui ne
+savent plus lancer d'applications 32 bits (Snapdragon 8 Gen 3, 8 Elite, Pixel 7 et plus récents…) refusent de
+l'installer. Ce projet construit, à partir de ta propre copie du jeu, un APK qui s'y installe : la bibliothèque native
+du jeu (`libSparkApp.so`) est remplacée par un runtime ARM64 qui charge le code ARM32 d'origine et le traduit à la
+volée avec **Dynarmic**. Le reste de l'APK (Java, ressources, données OBB) est celui du jeu.
+
+Le jeu solo fonctionne en entier, en plein écran et à 60 images/s en 3D. Les fonctions en ligne (Facebook,
+Google Play Jeux, « Plus de jeux », achats intégrés) ne marchent plus : les serveurs d'Ubisoft sont fermés. En plus :
+codes de triche (ressources infinies, le Queen Anne's Revenge que le jeu vendait en achat intégré), voir plus bas.
+
+**Ce dépôt ne contient aucun fichier du jeu** (code, images, sons, données : tout appartient à Ubisoft). Il faut
+avoir le jeu. Pour la même raison, ne publie pas l'APK construit : il contient les fichiers du jeu.
+
+## Ce qu'il faut
+
+- **Le jeu, version 2.9.1** (code de version 253), au choix :
+  - un fichier `.xapk`, qui contient l'APK et les données ;
+  - ou l'APK du jeu et son fichier de données `main.253.com.ubisoft.assassin.pirates.obb` (817 Mo), par exemple
+    récupérés sur un ancien téléphone où le jeu est installé : `adb shell pm path com.ubisoft.assassin.pirates` donne
+    le chemin de l'APK, à récupérer avec `adb pull <chemin> jeu.apk` ; l'OBB est dans
+    `Android/obb/com.ubisoft.assassin.pirates/`.
+
+  `package.ps1` vérifie que c'est bien la version testée : la bibliothèque du jeu, `lib/armeabi-v7a/libSparkApp.so`,
+  doit avoir le SHA-256 `1dc7f264f7591193ddf8a234250f3919511f3dda16b5c383de9b66c17cc291a7`. Une autre version
+  ne marchera probablement pas.
+- **Un téléphone Android 64 bits (ARM64)**, Android 10 ou plus récent, avec 1,2 Go de libre. Testé sur un REDMAGIC
+  NX799J (Snapdragon 8 Elite, Android 16). Les téléphones qui lancent encore le 32 bits peuvent aussi l'utiliser.
+- **Un PC Windows 10 ou 11** avec 2 Go de libre et :
+  - [Git](https://git-scm.com/download/win) ;
+  - le **SDK Android** avec ces paquets : NDK 27.3.13750724, CMake 3.22.1, Build-Tools 36.1.0, Platform 34 et
+    Platform-Tools. Avec [Android Studio](https://developer.android.com/studio) : *Tools > SDK Manager*, onglets
+    *SDK Platforms* et *SDK Tools*, case *Show Package Details* pour choisir les versions. Avec les
+    [outils en ligne de commande](https://developer.android.com/studio#command-line-tools-only) :
+    `sdkmanager "ndk;27.3.13750724" "cmake;3.22.1" "build-tools;36.1.0" "platforms;android-34" "platform-tools"`.
+    Le SDK est cherché dans `ANDROID_HOME`, `ANDROID_SDK_ROOT`, puis `%LOCALAPPDATA%\Android\Sdk` (l'emplacement
+    d'Android Studio). Si une autre version d'un paquet est installée, elle est utilisée, avec un avertissement ;
+  - un **JDK** 17 ou plus récent (celui d'Android Studio est trouvé tout seul) ;
+  - **Python** 3.8 ou plus récent ([python.org](https://www.python.org/downloads/), cocher *Add python.exe to PATH*).
+
+  Rien d'autre à télécharger : Dynarmic et les en-têtes Boost dont il a besoin sont dans `third_party/`.
+
+## Construire l'APK
+
+Dans PowerShell :
+
+```powershell
+git clone https://github.com/KLM-corporation/ac-pirates-arm64 C:\acp64
+cd C:\acp64
+powershell -ExecutionPolicy Bypass -File .\package.ps1 -Xapk "C:\chemin\vers\le\jeu.xapk"
+```
+
+- Avec l'APK et l'OBB séparés : `-Xapk "C:\...\jeu.apk" -Obb "C:\...\main.253.com.ubisoft.assassin.pirates.obb"`.
+- `-ExecutionPolicy Bypass` lève, pour cette commande seulement, le blocage des scripts PowerShell de Windows. Pour
+  ne plus avoir à l'écrire : `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, puis `.\package.ps1 ...`.
+- Clone le dépôt dans un dossier court (comme `C:\acp64`) : la compilation crée des chemins longs, et Windows
+  refuse ceux de plus de 260 caractères.
+- La première compilation prend de 2 à 10 minutes selon le PC. Résultat : `out\AC_Pirates_arm64.apk` (29 Mo). Les
+  lignes `WARNING:` de Java pendant la signature sont normales.
+- Les fichiers du jeu sont copiés dans `work\` (`original.apk`, `libSparkApp_arm32.so`, `obb\`). Les fois suivantes,
+  `.\package.ps1` suffit, sans `-Xapk`.
+- **La clé de signature** est créée au premier passage : `work\acp64.keystore`, avec son mot de passe dans
+  `work\keystore.properties`. Garde ces deux fichiers. Android n'accepte une mise à jour que si elle est signée par
+  la même clé : avec une autre clé, il faudrait désinstaller le jeu, ce qui efface la sauvegarde.
+
+## Installer sur le téléphone
+
+Il faut installer l'APK **et** copier les données du jeu (l'OBB) au bon endroit.
+
+**Avec ADB** (débogage USB ou sans fil activé dans les options pour les développeurs du téléphone) :
+
+```powershell
+.\installer_telephone.bat
+```
+
+Le script installe l'APK et copie l'OBB de `work\obb` dans `Android/obb/com.ubisoft.assassin.pirates/`. `adb` vient
+des Platform-Tools du SDK (dossier `platform-tools` du SDK, à ajouter au `PATH`). Si plusieurs appareils sont
+connectés, donne le numéro de série affiché par `adb devices` : `.\installer_telephone.bat <numéro>`.
+
+**À la main** :
+
+1. Copie `out\AC_Pirates_arm64.apk` sur le téléphone et ouvre-le. Autorise l'installation d'applications inconnues
+   si Android le demande. Si Play Protect avertit : *Plus d'infos > Installer quand même*.
+2. Branche le téléphone au PC en mode *Transfert de fichiers*. Sur le PC, ouvre *Mémoire interne > Android > obb*,
+   crée un dossier nommé exactement `com.ubisoft.assassin.pirates` et copie dedans
+   `main.253.com.ubisoft.assassin.pirates.obb` (il est dans `work\obb\`). Les gestionnaires de fichiers du téléphone
+   n'ont souvent plus le droit d'écrire dans `Android/obb` (Android 11 et plus) ; le PC, si.
+3. Lance « Pirates ». Android prévient que l'application a été conçue pour une ancienne version : *OK*. Accepte les
+   autorisations demandées.
+
+## Problèmes connus
+
+- **Écran de téléchargement qui n'aboutit jamais au démarrage** : l'OBB manque, ou n'a pas le bon nom ou le bon
+  dossier (`Android/obb/com.ubisoft.assassin.pirates/main.253.com.ubisoft.assassin.pirates.obb`).
+- **« Application non installée »** ou `INSTALL_FAILED_UPDATE_INCOMPATIBLE` : une autre version du jeu est déjà
+  installée (le jeu d'origine, ou un APK signé par une autre clé). Désinstalle-la d'abord (la sauvegarde est perdue).
+- **Le bouton JOUER reste grisé** au premier écran : le jeu charge la partie en arrière-plan, jusqu'à une minute.
+- **Le jeu plante** : `adb shell setprop debug.acp64.verbose 1`, relance le jeu, puis `adb logcat -s ACP64 DEBUG`
+  montre ce que fait le runtime (voir « Diagnostic »).
 
 ## Organisation
 
+- `package.ps1` : construit l'APK (runtime, Java, manifeste, signature) ; `build.ps1` : compile le runtime seul ;
+  `tools/android_sdk.ps1` : recherche des outils du SDK ; `tools/import_game.py` : importe le XAPK ou l'APK dans `work\` ;
+  `installer_telephone.bat` : installation par ADB.
 - `src/mem.*` : espace d'adressage 32 bits du jeu (identité dans les 4 premiers Go du processus), tas dlmalloc.
 - `src/elf_loader.*` : chargement et relocation de la bibliothèque ARM32.
 - `src/cpu.*`, `src/thunk.h` : contextes Dynarmic par thread, appels hôte ↔ jeu, passerelles (`svc`).
 - `src/hle/` : libc/pthread/stdio/réseau/temps… réimplémentés avec l'ABI bionic 32 bits.
-- `src/jni/` : JNIEnv/JavaVM 32 bits ; `natives_gen.cpp` est généré par `tools/gen_natives.py`.
+- `src/jni/` : JNIEnv/JavaVM 32 bits ; `natives_gen.cpp` est généré par `tools/gen_natives.py` (qui demande `pyelftools`).
 - `src/android/` : NativeActivity, libandroid, EGL/GLES 2, OpenSL ES, fenêtre de saisie des codes (`cheat_ui.*`).
-- `src/cheat/` : code de triche « ressources infinies » (voir plus bas).
-- `tools/patch_dex.py` : corrige un bug Java d'origine (`AlarmService.SafeParseInt` récursif).
+- `src/cheat/` : codes de triche (voir plus bas) ; `src/game/perf_patches.cpp` : corrections de performances.
+- `tools/repack.py` : reconstruit l'APK ; `tools/patch_dex.py` : corrige un bug Java d'origine
+  (`AlarmService.SafeParseInt` récursif).
 - `tools/patch_manifest.py` : plein écran jusqu'au format 3:1, gestion de tous les changements de configuration par le jeu (sinon Android recrée l'activité et le moteur se bloque : pliage, taille d'affichage, mode sombre…) et `targetSdkVersion` 24 (Android 15 refuse les applications ciblant moins).
-- `tools/java/` : fenêtre de saisie des codes, compilée en `classes3.dex` par `package.ps1` ; `tools/lua/` : scripts Lua du code de triche et de mise au point ; `tools/java_test/` : outil de test (touchers multi-doigts depuis adb).
+- `tools/java/` : fenêtre de saisie des codes, compilée en `classes3.dex` par `package.ps1` ; `tools/lua/` : scripts Lua du code de triche et de mise au point ; `tools/java_test/` : outil de test (touchers multi-doigts depuis adb) ; les scripts `tools/*.sh` (Git Bash) servent aux mesures sur le téléphone.
+- `third_party/` : Dynarmic, en-têtes Boost, dlmalloc (origines et licences dans `third_party/README.md`).
 
-## Construire
-
-```
-.\package.ps1                 # APK ARM64 -> out\AC_Pirates_arm64.apk
-.\package.ps1 -Abi x86_64     # APK de test pour l'émulateur Android x86_64
-```
-
-Prérequis : Android SDK avec le NDK 27.3.13750724 et CMake 3.22.1 (`build.ps1`), JDK (javac, keytool), Python 3,
-et les en-têtes Boost (1.57 ou plus, utilisés par Dynarmic) dans `third_partyoostoost\`.
-
-Les fichiers du jeu ne sont pas dans ce dépôt (contenu Ubisoft) : il faut son propre XAPK 2.9.1, d'où viennent
-`work\original.apk` (l'APK principal), `work\libSparkApp_arm32.so` (`lib/armeabi-v7a/libSparkApp.so` de cet APK)
-et l'OBB. La clé de signature (`workcp64.keystore`) est créée au premier `package.ps1`.
-
-## Installer
-
-L'APK s'installe en l'ouvrant sur le téléphone (ou `adb install -r`), puis il faut copier l'OBB dans
-`Android/obb/com.ubisoft.assassin.pirates/`. `out\installer_telephone.bat` fait les deux par ADB.
+Pour un émulateur Android x86_64 (tests) : `.\package.ps1 -Abi x86_64` donne `out\AC_Pirates_emulator_x86_64.apk`.
 
 ## Diagnostic
 
-`adb shell setprop debug.acp64.verbose 1` active les journaux détaillés (tag `ACP64`).
+`adb shell setprop debug.acp64.verbose 1` active les journaux détaillés (tag `ACP64`, à lire avec
+`adb logcat -s ACP64`) ; `adb shell setprop debug.acp64.verbose 0` les coupe (ils ralentissent le jeu). Le
+réglage est relu au lancement du jeu et disparaît au redémarrage du téléphone.
 
 ## Code de triche (ressources infinies)
 

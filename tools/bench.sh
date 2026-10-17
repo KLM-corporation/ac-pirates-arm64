@@ -3,12 +3,13 @@
 #   tools/bench.sh <serial> <seconds> <label>
 export MSYS_NO_PATHCONV=1
 A="adb -s $1"
+WORK=$(mkdir -p "$(dirname "$0")/../work" && cd "$(dirname "$0")/../work" && (pwd -W 2>/dev/null || pwd))
 SECS=${2:-10}
 LABEL=${3:-bench}
 $A logcat -c
 sleep "$SECS"
-$A logcat -d -s ACP64:I | grep "swap:" | sed 's/.*swap: //' > W:/acp64/work/bench_tmp.txt
-python -I - "$LABEL" W:/acp64/work/bench_tmp.txt <<'PY'
+$A logcat -d -s ACP64:I | grep "swap:" | sed 's/.*swap: //' > "$WORK/bench_tmp.txt"
+python -I - "$LABEL" "$WORK/bench_tmp.txt" <<'PY'
 import re, sys
 label, path = sys.argv[1], sys.argv[2]
 rows = []
@@ -25,4 +26,4 @@ worst = max(r[3] for r in rows)
 slow = sum(r[4] for r in rows)
 print(f"{label}: {n} s, avg {fps:.1f} fps (min {min(r[0] for r in rows):.1f}), work {work:.1f} ms/frame, worst frame {worst:.1f} ms, {int(slow)} frames > 17.5 ms")
 PY
-rm -f W:/acp64/work/bench_tmp.txt
+rm -f "$WORK/bench_tmp.txt"

@@ -4,7 +4,8 @@
 #   tools/goto_sea.sh <serial>
 export MSYS_NO_PATHCONV=1
 A="adb -s $1"
-SHOT=W:/acp64/work/goto.png
+WORK=$(mkdir -p "$(dirname "$0")/../work" && cd "$(dirname "$0")/../work" && (pwd -W 2>/dev/null || pwd))
+SHOT="$WORK/goto.png"
 # bright <x0> <x1> <y>: 1 if a pixel of that row segment of the last screenshot is near white
 bright() {
     python -I - "$SHOT" "$1" "$2" "$3" <<'PY'
@@ -44,7 +45,7 @@ $A shell input tap 228 127           # skip the intro cinematic
 # Wait until JOUER is lit (the profile loads in the background), closing the "Plus de jeux" page if it opened.
 for i in $(seq 1 40); do
     sleep 3
-    $A exec-out screencap -p > $SHOT
+    $A exec-out screencap -p > "$SHOT"
     if [ "$(bright 20 60 300)" = 1 ]; then
         $A shell input tap 2586 70   # web page (white): Close
         continue
@@ -57,5 +58,5 @@ $A shell input tap 1367 878          # JOUER
 sleep 14
 $A shell input tap 870 600           # current map node: sail out
 sleep 30
-$A exec-out screencap -p > $SHOT
+$A exec-out screencap -p > "$SHOT"
 echo "at sea (screenshot $SHOT)"

@@ -10,6 +10,7 @@ WAIT=${3:-40}
 VERBOSE=${4:-0}
 PKG=com.ubisoft.assassin.pirates
 A="adb -s $SERIAL"
+WORK=$(mkdir -p "$(dirname "$0")/../work" && cd "$(dirname "$0")/../work" && (pwd -W 2>/dev/null || pwd))
 
 $A shell am force-stop $PKG
 $A install --bypass-low-target-sdk-block -r "$APK" | tail -1
@@ -19,7 +20,7 @@ done
 $A shell setprop debug.acp64.verbose "$VERBOSE"
 $A logcat -c
 # Stream the log while the game runs: phone log buffers wrap quickly.
-$A logcat -v threadtime > W:/acp64/work/run_all.log 2>/dev/null &
+$A logcat -v threadtime > "$WORK/run_all.log" 2>/dev/null &
 LOGPID=$!
 $A shell am start -n $PKG/.SparkActivity >/dev/null
 sleep 6
@@ -31,6 +32,6 @@ sleep "$WAIT"
 PID=$($A shell pidof $PKG | tr -d '\r')
 echo "pid after ${WAIT}s: ${PID:-<dead>}"
 kill $LOGPID 2>/dev/null
-grep -E "ACP64|G:|libc |DEBUG|AndroidRuntime" W:/acp64/work/run_all.log | grep -v "luaJIT_BC" > W:/acp64/work/run.log
-$A exec-out screencap -p > W:/acp64/work/run.png
-wc -l W:/acp64/work/run.log
+grep -E "ACP64|G:|libc |DEBUG|AndroidRuntime" "$WORK/run_all.log" | grep -v "luaJIT_BC" > "$WORK/run.log"
+$A exec-out screencap -p > "$WORK/run.png"
+wc -l "$WORK/run.log"

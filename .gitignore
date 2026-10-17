@@ -12,9 +12,8 @@
 *.keystore
 keystore.properties
 
-# Third-party downloads (see README, "Construire")
+# Third-party download cache (third_party/boost holds only the Boost headers in use: tools/boost_subset.py)
 /third_party/_dl/
-/third_party/boost/
 
 # Python caches
 __pycache__/
