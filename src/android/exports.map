@@ -1,0 +1,8 @@
+{
+  global:
+    ANativeActivity_onCreate;
+    JNI_OnLoad;
+    Java_*;
+  local:
+    *;
+};

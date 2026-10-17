@@ -1,0 +1,5 @@
+// Generated from tools/lua/cheat_infinite.lua and tools/lua/unlock_queen.lua by CMake.
+#pragma once
+
+static const char kCheatLua[] = R"LUA(@ZB_CHEAT_LUA@)LUA";
+static const char kQueenLua[] = R"LUA(@ZB_QUEEN_LUA@)LUA";
