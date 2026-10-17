@@ -235,3 +235,11 @@ l'interpréteur Lua du jeu à chaque modification (touche-le avant de le recopie
 `tools/lua/probe_*.lua` en sont des exemples (liste des globales, recherche des noms liés à l'argent, contenu
 des fonctions). `tools/java_test/Inj.java` injecte des touchers multi-doigts depuis adb (`app_process`) pour
 tester sans toucher l'écran.
+
+## Licence
+
+Le code de ce dépôt (runtime, scripts, outils) est sous licence MIT : voir `LICENSE`. Les bibliothèques de
+`third_party/` gardent leur propre licence (voir `third_party/README.md`).
+
+Projet non officiel, sans lien avec Ubisoft. Le jeu (code, données, nom et marques Assassin's Creed) appartient à
+Ubisoft et n'est pas couvert par cette licence.
