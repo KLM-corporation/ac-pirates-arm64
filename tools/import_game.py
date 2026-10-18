@@ -42,6 +42,17 @@ def tr(fr, en):
     return fr if FRENCH else en
 
 
+def match_console_encoding():
+    """When the output of package.ps1 is piped or saved to a file, Python writes in the ANSI code page while
+    PowerShell reads the console's OEM code page, and accents come out garbled: write in the console's code page.
+    (Straight to the console, Python already writes Unicode.)"""
+    if sys.platform == "win32" and not sys.stdout.isatty():
+        import ctypes
+        cp = ctypes.windll.kernel32.GetConsoleOutputCP()
+        if cp:
+            sys.stdout.reconfigure(encoding=f"cp{cp}", errors="replace")
+
+
 def sha256(path):
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -67,6 +78,7 @@ def fail(msg):
 
 
 def main():
+    match_console_encoding()
     if len(sys.argv) < 3:
         print(__doc__)
         return 2

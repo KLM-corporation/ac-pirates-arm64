@@ -10,7 +10,8 @@ if not "%~1"=="" set "ANDROID_SERIAL=%~1"
 
 set "FR="
 if /i "%ACP64_LANG%"=="fr" set "FR=1"
-if not defined ACP64_LANG powershell -NoProfile -Command "exit [int]((Get-UICulture).TwoLetterISOLanguageName -ne 'fr')" >nul 2>&1 && set "FR=1"
+rem powershell.exe and not powershell: a powershell.cmd or .bat found first on the PATH would end this script.
+if not defined ACP64_LANG powershell.exe -NoProfile -Command "exit [int]((Get-UICulture).TwoLetterISOLanguageName -ne 'fr')" >nul 2>&1 && set "FR=1"
 
 rem adb: on the PATH, else in the Android SDK (same places as package.ps1).
 set "ADB="
