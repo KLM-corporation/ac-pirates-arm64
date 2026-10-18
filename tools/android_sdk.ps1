@@ -4,8 +4,21 @@
 
 $AcpSdkPackages = '"ndk;27.3.13750724" "cmake;3.22.1" "build-tools;36.1.0" "platforms;android-34" "platform-tools"'
 
+# Messages are in French on a French Windows, in English otherwise; ACP64_LANG=fr or en forces one. The choice is
+# passed on to the Python scripts through the same variable.
+if ($env:ACP64_LANG) {
+    $AcpFrench = $env:ACP64_LANG -like "fr*"
+} else {
+    $AcpFrench = (Get-UICulture).TwoLetterISOLanguageName -eq "fr"
+}
+$env:ACP64_LANG = if ($AcpFrench) { "fr" } else { "en" }
+
+function Tr([string]$Fr, [string]$En) {
+    if ($AcpFrench) { return $Fr } else { return $En }
+}
+
 function Stop-Acp([string]$Message) {
-    Write-Host "ERREUR : $Message" -ForegroundColor Red
+    Write-Host ((Tr "ERREUR : " "ERROR: ") + $Message) -ForegroundColor Red
     exit 1
 }
 
@@ -19,8 +32,10 @@ function Find-AcpSdk {
     foreach ($d in @($env:ANDROID_HOME, $env:ANDROID_SDK_ROOT, (Join-Path $env:LOCALAPPDATA "Android\Sdk"))) {
         if ($d -and (Test-Path $d)) { return (Resolve-Path $d).Path }
     }
-    Stop-Acp ("SDK Android introuvable (ni ANDROID_HOME, ni %LOCALAPPDATA%\Android\Sdk). Installe Android Studio, " +
-        "ou les outils en ligne de commande, puis : sdkmanager $AcpSdkPackages")
+    Stop-Acp (Tr ("SDK Android introuvable (ni ANDROID_HOME, ni %LOCALAPPDATA%\Android\Sdk). Installe Android " +
+            "Studio, ou les outils en ligne de commande, puis : sdkmanager $AcpSdkPackages") `
+        ("Android SDK not found (neither ANDROID_HOME nor %LOCALAPPDATA%\Android\Sdk). Install Android Studio, or " +
+            "the command-line tools, then: sdkmanager $AcpSdkPackages"))
 }
 
 # <sdk>\<Kind>\<Wanted> if installed, else the newest <sdk>\<Kind>\* (warning), else stop.
@@ -31,10 +46,12 @@ function Select-AcpPackage([string]$Sdk, [string]$Kind, [string]$Wanted, [string
     $all = @(Get-ChildItem $dir -Directory -ErrorAction SilentlyContinue |
         Sort-Object { ConvertTo-AcpVersion $_.Name } -Descending)
     if ($all.Count -gt 0) {
-        Write-Warning "$Kind $Wanted absent du SDK : utilisation de $($all[0].Name) (version non testée)."
+        Write-Warning (Tr "$Kind $Wanted absent du SDK : utilisation de $($all[0].Name) (version non testée)." `
+            "$Kind $Wanted is not in the SDK: using $($all[0].Name) (untested version).")
         return $all[0].FullName
     }
-    Stop-Acp "$Kind introuvable dans $Sdk. Installe-le : sdkmanager `"$Package`""
+    Stop-Acp (Tr "$Kind introuvable dans $Sdk. Installe-le : sdkmanager `"$Package`"" `
+        "$Kind not found in $Sdk. Install it: sdkmanager `"$Package`"")
 }
 
 # NDK and CMake (build.ps1).
@@ -62,7 +79,10 @@ function Get-AcpPackagingTools {
         if ($env:JAVA_HOME) { $jdkBins += Join-Path $env:JAVA_HOME "bin" }
         $jdkBins += Join-Path $env:ProgramFiles "Android\Android Studio\jbr\bin"
         $found = $jdkBins | Where-Object { Test-Path (Join-Path $_ "javac.exe") } | Select-Object -First 1
-        if (-not $found) { Stop-Acp "JDK introuvable (javac). Installe un JDK 17 ou plus récent, ou Android Studio." }
+        if (-not $found) {
+            Stop-Acp (Tr "JDK introuvable (javac). Installe un JDK 17 ou plus récent, ou Android Studio." `
+                "JDK not found (javac). Install JDK 17 or newer, or Android Studio.")
+        }
         $env:PATH = "$found;$env:PATH"
     }
 
@@ -78,7 +98,10 @@ function Get-AcpPackagingTools {
         $exe = "$($lines[0])".Trim()
         if ($exe -and (Test-Path $exe)) { $python = $exe; break }
     }
-    if (-not $python) { Stop-Acp "Python 3.8 ou plus récent introuvable. Installe-le depuis python.org (case `"Add to PATH`")." }
+    if (-not $python) {
+        Stop-Acp (Tr "Python 3.8 ou plus récent introuvable. Installe-le depuis python.org (case `"Add python.exe to PATH`")." `
+            "Python 3.8 or newer not found. Install it from python.org (tick `"Add python.exe to PATH`").")
+    }
 
     return @{
         Sdk = $sdk

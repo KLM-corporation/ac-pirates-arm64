@@ -6,6 +6,8 @@ Writes:
   work/libSparkApp_arm32.so    its ARM32 library (lib/armeabi-v7a/libSparkApp.so), run by the runtime
   work/obb/main.<n>.com.ubisoft.assassin.pirates.obb   the game data, for installer_telephone.bat
 
+Messages are in French on a French system, in English otherwise (ACP64_LANG=fr or en forces one).
+
 usage: import_game.py <game.xapk | game.apk> <work dir> [game.obb]
 """
 import hashlib
@@ -21,6 +23,23 @@ LIB = "lib/armeabi-v7a/libSparkApp.so"
 # exact library.
 TESTED_LIB_SHA256 = "1dc7f264f7591193ddf8a234250f3919511f3dda16b5c383de9b66c17cc291a7"
 TESTED_OBB = f"main.253.{PKG}.obb"
+
+
+def is_french():
+    lang = os.environ.get("ACP64_LANG", "")
+    if lang:
+        return lang.lower().startswith("fr")
+    if sys.platform == "win32":
+        import ctypes
+        return ctypes.windll.kernel32.GetUserDefaultUILanguage() & 0x3FF == 0x0C  # LANG_FRENCH
+    return os.environ.get("LANG", "").lower().startswith("fr")
+
+
+FRENCH = is_french()
+
+
+def tr(fr, en):
+    return fr if FRENCH else en
 
 
 def sha256(path):
@@ -43,7 +62,7 @@ def same_size(path, size):
 
 
 def fail(msg):
-    print("ERREUR : " + msg)
+    print(tr("ERREUR : ", "ERROR: ") + msg)
     sys.exit(1)
 
 
@@ -54,32 +73,35 @@ def main():
     src, work = sys.argv[1], sys.argv[2]
     obb_arg = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] else None
     if not os.path.isfile(src):
-        fail(f"fichier introuvable : {src}")
+        fail(tr(f"fichier introuvable : {src}", f"file not found: {src}"))
     if not zipfile.is_zipfile(src):
-        fail(f"{src} n'est pas un .xapk ni un .apk (ce n'est pas une archive zip)")
+        fail(tr(f"{src} n'est pas un .xapk ni un .apk (ce n'est pas une archive zip)",
+                f"{src} is neither an .xapk nor an .apk (it is not a zip archive)"))
     os.makedirs(os.path.join(work, "obb"), exist_ok=True)
     apk_out = os.path.join(work, "original.apk")
     obbs = []
+    imported = tr("déjà importé", "already imported")
 
     with zipfile.ZipFile(src) as z:
         names = z.namelist()
         if "AndroidManifest.xml" in names:
             # A plain APK.
-            print(f"APK : {os.path.basename(src)}")
+            print(f"APK: {os.path.basename(src)}")
             shutil.copyfile(src, apk_out)
         else:
             # An XAPK: the APK(s), the OBB and a manifest.json.
             if "manifest.json" in names:
                 try:
                     m = json.loads(z.read("manifest.json"))
-                    print(f"XAPK : {m.get('package_name')} version {m.get('version_name')} ({m.get('version_code')})")
+                    print(f"XAPK: {m.get('package_name')} version {m.get('version_name')} ({m.get('version_code')})")
                     if m.get("package_name") not in (None, PKG):
-                        fail(f"ce XAPK n'est pas Assassin's Creed Pirates ({m.get('package_name')})")
+                        fail(tr(f"ce XAPK n'est pas Assassin's Creed Pirates ({m.get('package_name')})",
+                                f"this XAPK is not Assassin's Creed Pirates ({m.get('package_name')})"))
                 except ValueError:
                     pass
             apks = [n for n in names if n.lower().endswith(".apk")]
             if not apks:
-                fail("aucun APK dans ce fichier")
+                fail(tr("aucun APK dans ce fichier", "no APK in this file"))
             # The base APK (the one with the Java code); split APKs other than the native-library one are not
             # supported (this game ships a single APK).
             base = None
@@ -89,13 +111,14 @@ def main():
                         base = n
                         break
             if base is None:
-                fail("aucun APK principal (avec classes.dex) dans ce fichier")
+                fail(tr("aucun APK principal (avec classes.dex) dans ce fichier",
+                        "no main APK (with classes.dex) in this file"))
             others = [n for n in apks if n != base]
             if others:
-                print("  APK ignorés (non pris en charge) : " + ", ".join(others))
+                print(tr("  APK ignorés (non pris en charge) : ", "  APKs ignored (not supported): ") + ", ".join(others))
             info = z.getinfo(base)
             if same_size(apk_out, info.file_size):
-                print(f"  {base} : déjà importé")
+                print(f"  {base}: {imported}")
             else:
                 print(f"  {base} -> work/original.apk")
                 with z.open(base) as f:
@@ -105,16 +128,16 @@ def main():
                     dst = os.path.join(work, "obb", os.path.basename(n))
                     size = z.getinfo(n).file_size
                     if same_size(dst, size):
-                        print(f"  {os.path.basename(n)} : déjà importé")
+                        print(f"  {os.path.basename(n)}: {imported}")
                     else:
-                        print(f"  {os.path.basename(n)} ({size // 1000000} Mo) -> work/obb/")
+                        print(f"  {os.path.basename(n)} ({size // 1000000} {tr('Mo', 'MB')}) -> work/obb/")
                         with z.open(n) as f:
                             copy_stream(f, dst)
                     obbs.append(os.path.basename(n))
 
     if obb_arg:
         if not os.path.isfile(obb_arg):
-            fail(f"OBB introuvable : {obb_arg}")
+            fail(tr(f"OBB introuvable : {obb_arg}", f"OBB not found: {obb_arg}"))
         dst = os.path.join(work, "obb", os.path.basename(obb_arg))
         if not same_size(dst, os.path.getsize(obb_arg)):
             print(f"  {os.path.basename(obb_arg)} -> work/obb/")
@@ -124,21 +147,27 @@ def main():
     lib_out = os.path.join(work, "libSparkApp_arm32.so")
     with zipfile.ZipFile(apk_out) as apk:
         if LIB not in apk.namelist():
-            fail(f"l'APK ne contient pas {LIB} : ce n'est pas le jeu attendu")
+            fail(tr(f"l'APK ne contient pas {LIB} : ce n'est pas le jeu attendu",
+                    f"the APK has no {LIB}: this is not the expected game"))
         with apk.open(LIB) as f:
             copy_stream(f, lib_out)
     print(f"  {LIB} -> work/libSparkApp_arm32.so")
 
     if sha256(lib_out) == TESTED_LIB_SHA256:
-        print("Version 2.9.1 reconnue (bibliothèque identique à celle testée).")
+        print(tr("Version 2.9.1 reconnue (bibliothèque identique à celle testée).",
+                 "Version 2.9.1 recognized (library identical to the tested one)."))
     else:
-        print("ATTENTION : cette bibliothèque n'est pas celle de la version 2.9.1 testée ; le jeu risque de ne pas "
-              "démarrer.")
+        print(tr("ATTENTION : cette bibliothèque n'est pas celle de la version 2.9.1 testée ; le jeu risque de ne pas "
+                 "démarrer.",
+                 "WARNING: this library is not the one of the tested version 2.9.1; the game may not start."))
     if not obbs:
-        print(f"ATTENTION : pas de fichier OBB (données du jeu, {TESTED_OBB}). Donne-le en plus de l'APK, ou copie-le "
-              f"toi-même sur le téléphone dans Android/obb/{PKG}/.")
+        print(tr(f"ATTENTION : pas de fichier OBB (données du jeu, {TESTED_OBB}). Donne-le en plus de l'APK, ou "
+                 f"copie-le toi-même sur le téléphone dans Android/obb/{PKG}/.",
+                 f"WARNING: no OBB file (game data, {TESTED_OBB}). Give it along with the APK, or copy it to the "
+                 f"phone yourself, into Android/obb/{PKG}/."))
     elif TESTED_OBB not in obbs:
-        print(f"ATTENTION : OBB inattendu ({', '.join(obbs)}) ; la version 2.9.1 utilise {TESTED_OBB}.")
+        print(tr(f"ATTENTION : OBB inattendu ({', '.join(obbs)}) ; la version 2.9.1 utilise {TESTED_OBB}.",
+                 f"WARNING: unexpected OBB ({', '.join(obbs)}); version 2.9.1 uses {TESTED_OBB}."))
     return 0
 
 

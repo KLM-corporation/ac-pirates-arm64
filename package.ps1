@@ -24,7 +24,8 @@ if ($Xapk) {
 $originalApk = Join-Path $work "original.apk"
 $gameLib = Join-Path $work "libSparkApp_arm32.so"
 if (-not (Test-Path $originalApk) -or -not (Test-Path $gameLib)) {
-    Stop-Acp "les fichiers du jeu manquent dans work\. Lance d'abord : .\package.ps1 -Xapk <chemin du fichier .xapk du jeu>"
+    Stop-Acp (Tr "les fichiers du jeu manquent dans work\. Lance d'abord : .\package.ps1 -Xapk <chemin du fichier .xapk du jeu>" `
+        "the game's files are missing from work\. First run: .\package.ps1 -Xapk <path to the game's .xapk file>")
 }
 
 if (-not $SkipBuild) {
@@ -93,9 +94,12 @@ if (-not (Test-Path $ks)) {
     & keytool -genkeypair -keystore $ks -alias acp64 -keyalg RSA -keysize 2048 -validity 10000 `
         -storepass $pw -keypass $pw -dname "CN=acp64 local build" | Out-Null
     if ($LASTEXITCODE) { exit $LASTEXITCODE }
-    Write-Host "Clé de signature créée : work\acp64.keystore (mot de passe dans work\keystore.properties)."
-    Write-Host ("Garde ces deux fichiers : pour mettre le jeu à jour sur le téléphone, le nouvel APK doit être signé " +
-        "par la même clé (sinon il faut désinstaller le jeu, ce qui efface la sauvegarde).") -ForegroundColor Yellow
+    Write-Host (Tr "Clé de signature créée : work\acp64.keystore (mot de passe dans work\keystore.properties)." `
+        "Signing key created: work\acp64.keystore (password in work\keystore.properties).")
+    Write-Host (Tr ("Garde ces deux fichiers, et une copie : pour mettre le jeu à jour sur le téléphone, le nouvel APK " +
+            "doit être signé par la même clé (sinon il faut désinstaller le jeu, ce qui efface la sauvegarde).") `
+        ("Keep these two files, and a backup: to update the game on the phone, the new APK must be signed with the " +
+            "same key (otherwise the game must be uninstalled, which erases the save).")) -ForegroundColor Yellow
 }
 $pw = ((Get-Content $props) -replace "^password=", "").Trim()
 $final = Join-Path $out $(if ($Abi -eq "x86_64") { "AC_Pirates_emulator_x86_64.apk" } else { "AC_Pirates_arm64.apk" })
@@ -103,7 +107,8 @@ $final = Join-Path $out $(if ($Abi -eq "x86_64") { "AC_Pirates_emulator_x86_64.a
 if ($LASTEXITCODE) { exit $LASTEXITCODE }
 $mb = "{0:N1}" -f ((Get-Item $final).Length / 1e6)
 Write-Host ""
-Write-Host "APK prêt : $final ($mb Mo)" -ForegroundColor Green
+Write-Host (Tr "APK prêt : $final ($mb Mo)" "APK ready: $final ($mb MB)") -ForegroundColor Green
 if ($Abi -ne "x86_64") {
-    Write-Host "Installation : .\installer_telephone.bat (téléphone connecté en ADB), ou README.md, partie « Installer »."
+    Write-Host (Tr "Installation : .\installer_telephone.bat (téléphone connecté en ADB), ou README.fr.md, partie « Installer sur le téléphone »." `
+        "To install it: .\installer_telephone.bat (phone connected through ADB), or README.md, section Install on the phone.")
 }

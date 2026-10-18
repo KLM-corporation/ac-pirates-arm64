@@ -1,4 +1,19 @@
-# Bibliothèques tierces
+# Third-party libraries
+
+*Version française plus bas.*
+
+| Folder | Origin | License | Changes |
+|---|---|---|---|
+| `dynarmic/` | [Vita3K/dynarmic](https://github.com/Vita3K/dynarmic), `master` branch (October 2026), with its dependencies in `externals/` | 0BSD (`dynarmic/LICENSE.txt`), and each dependency's own | `Jit::GetBlockMap` (map of compiled blocks, for profiling): `src/dynarmic/interface/A32/a32.h`, `src/dynarmic/backend/arm64/a32_interface.cpp`, `src/dynarmic/backend/arm64/address_space.h`, `src/dynarmic/backend/x64/a32_interface.cpp` |
+| `boost/` | [Boost 1.92.0](https://github.com/boostorg/boost/releases/tag/boost-1.92.0): only the 763 headers Dynarmic uses (icl, variant, mpl…), copied by `tools/boost_subset.py` | Boost Software License 1.0 (`boost/LICENSE_1_0.txt`) | none |
+| `dlmalloc/` | dlmalloc 2.8.6 by Doug Lea | MIT-0 (at the top of `malloc.c`) | none |
+
+After updating Dynarmic or changing the NDK, the list of Boost headers must be regenerated: put a full Boost in place
+of `third_party/boost`, build both ABIs (`.\build.ps1` and `.\build.ps1 -Abi x86_64`), move that full Boost to
+`third_party/_dl/boost_full`, then run
+`python tools/boost_subset.py third_party/_dl/boost_full <the SDK's ninja.exe> build/arm64 build/x86_64`.
+
+## Bibliothèques tierces
 
 | Dossier | Origine | Licence | Modifications |
 |---|---|---|---|

@@ -1,260 +1,267 @@
-# Assassin's Creed Pirates sur téléphone ARM64 uniquement
+**English** | [Français](README.fr.md)
 
-Assassin's Creed Pirates (Ubisoft, version 2.9.1) n'existe qu'en ARM 32 bits : les téléphones récents qui ne
-savent plus lancer d'applications 32 bits (Snapdragon 8 Gen 3, 8 Elite, Pixel 7 et plus récents…) refusent de
-l'installer. Ce projet construit, à partir de ta propre copie du jeu, un APK qui s'y installe : la bibliothèque native
-du jeu (`libSparkApp.so`) est remplacée par un runtime ARM64 qui charge le code ARM32 d'origine et le traduit à la
-volée avec **Dynarmic**. Le reste de l'APK (Java, ressources, données OBB) est celui du jeu.
+# Assassin's Creed Pirates on 64-bit-only Android phones
 
-Le jeu solo fonctionne en entier, en plein écran et à 60 images/s en 3D. Les fonctions en ligne (Facebook,
-Google Play Jeux, « Plus de jeux », achats intégrés) ne marchent plus : les serveurs d'Ubisoft sont fermés. En plus :
-codes de triche (ressources infinies, le Queen Anne's Revenge que le jeu vendait en achat intégré), voir plus bas.
+Assassin's Creed Pirates (Ubisoft, version 2.9.1) only exists as 32-bit ARM code: recent phones that can no longer
+run 32-bit apps (Snapdragon 8 Gen 3, 8 Elite, Pixel 7 and newer…) refuse to install it. This project builds, from
+your own copy of the game, an APK that installs on them: the game's native library (`libSparkApp.so`) is replaced by
+an ARM64 runtime that loads the original ARM32 code and translates it on the fly with **Dynarmic**. The rest of the
+APK (Java code, resources, OBB data) is the game's own.
 
-**Ce dépôt ne contient aucun fichier du jeu** (code, images, sons, données : tout appartient à Ubisoft). Il faut
-avoir le jeu. Pour la même raison, ne publie pas l'APK construit : il contient les fichiers du jeu.
+The whole single-player game works, full screen and at 60 fps in 3D. Online features (Facebook, Google Play Games,
+"More games", in-app purchases) no longer work: Ubisoft's servers are shut down. Extras: cheat codes (infinite
+resources, and the Queen Anne's Revenge, which the game used to sell as an in-app purchase), see below.
 
-## Ce qu'il faut
+**This repository contains none of the game's files** (code, images, sounds, data: all of it belongs to Ubisoft). You
+need to own the game. For the same reason, do not publish the APK you build: it contains the game's files.
 
-- **Le jeu, version 2.9.1** (code de version 253), au choix :
-  - un fichier `.xapk`, qui contient l'APK et les données ;
-  - ou l'APK du jeu et son fichier de données `main.253.com.ubisoft.assassin.pirates.obb` (817 Mo), par exemple
-    récupérés sur un ancien téléphone où le jeu est installé : `adb shell pm path com.ubisoft.assassin.pirates` donne
-    le chemin de l'APK, à récupérer avec `adb pull <chemin> jeu.apk` ; l'OBB est dans
-    `Android/obb/com.ubisoft.assassin.pirates/`.
+## What you need
 
-  `package.ps1` vérifie que c'est bien la version testée : la bibliothèque du jeu, `lib/armeabi-v7a/libSparkApp.so`,
-  doit avoir le SHA-256 `1dc7f264f7591193ddf8a234250f3919511f3dda16b5c383de9b66c17cc291a7`. Une autre version
-  ne marchera probablement pas.
-- **Un téléphone Android 64 bits (ARM64)**, Android 10 ou plus récent, avec 1,2 Go de libre. Testé sur un REDMAGIC
-  NX799J (Snapdragon 8 Elite, Android 16). Les téléphones qui lancent encore le 32 bits peuvent aussi l'utiliser.
-- **Un PC Windows 10 ou 11** avec 2 Go de libre et :
-  - [Git](https://git-scm.com/download/win) ;
-  - le **SDK Android** avec ces paquets : NDK 27.3.13750724, CMake 3.22.1, Build-Tools 36.1.0, Platform 34 et
-    Platform-Tools. Avec [Android Studio](https://developer.android.com/studio) : *Tools > SDK Manager*, onglets
-    *SDK Platforms* et *SDK Tools*, case *Show Package Details* pour choisir les versions. Avec les
-    [outils en ligne de commande](https://developer.android.com/studio#command-line-tools-only) :
+- **The game, version 2.9.1** (version code 253), either:
+  - an `.xapk` file, which holds the APK and the data;
+  - or the game's APK and its data file `main.253.com.ubisoft.assassin.pirates.obb` (817 MB), for example taken
+    from an old phone where the game is installed: `adb shell pm path com.ubisoft.assassin.pirates` gives the APK's
+    path, to fetch with `adb pull <path> game.apk`; the OBB is in `Android/obb/com.ubisoft.assassin.pirates/`.
+
+  `package.ps1` checks that this is the tested version: the game's library, `lib/armeabi-v7a/libSparkApp.so`, must
+  have the SHA-256 `1dc7f264f7591193ddf8a234250f3919511f3dda16b5c383de9b66c17cc291a7`. Another version will most
+  likely not work.
+- **A 64-bit (ARM64) Android phone**, Android 10 or newer, with 1.2 GB free. Tested on a REDMAGIC NX799J
+  (Snapdragon 8 Elite, Android 16). Phones that can still run 32-bit apps can use it too.
+- **A Windows 10 or 11 PC** with 2 GB free and:
+  - [Git](https://git-scm.com/download/win);
+  - the **Android SDK** with these packages: NDK 27.3.13750724, CMake 3.22.1, Build-Tools 36.1.0, Platform 34 and
+    Platform-Tools. With [Android Studio](https://developer.android.com/studio): *Tools > SDK Manager*, *SDK
+    Platforms* and *SDK Tools* tabs, tick *Show Package Details* to pick the versions. With the
+    [command-line tools](https://developer.android.com/studio#command-line-tools-only):
     `sdkmanager "ndk;27.3.13750724" "cmake;3.22.1" "build-tools;36.1.0" "platforms;android-34" "platform-tools"`.
-    Le SDK est cherché dans `ANDROID_HOME`, `ANDROID_SDK_ROOT`, puis `%LOCALAPPDATA%\Android\Sdk` (l'emplacement
-    d'Android Studio). Si une autre version d'un paquet est installée, elle est utilisée, avec un avertissement ;
-  - un **JDK** 17 ou plus récent (celui d'Android Studio est trouvé tout seul) ;
-  - **Python** 3.8 ou plus récent ([python.org](https://www.python.org/downloads/), cocher *Add python.exe to PATH*).
+    The SDK is looked up in `ANDROID_HOME`, `ANDROID_SDK_ROOT`, then `%LOCALAPPDATA%\Android\Sdk` (where Android
+    Studio puts it). If another version of a package is installed, it is used, with a warning;
+  - a **JDK** 17 or newer (the one bundled with Android Studio is found automatically);
+  - **Python** 3.8 or newer ([python.org](https://www.python.org/downloads/), tick *Add python.exe to PATH*).
 
-  Rien d'autre à télécharger : Dynarmic et les en-têtes Boost dont il a besoin sont dans `third_party/`.
+  Nothing else to download: Dynarmic and the Boost headers it needs are in `third_party/`.
 
-## Construire l'APK
+## Build the APK
 
-Dans PowerShell :
+In PowerShell:
 
 ```powershell
 git clone https://github.com/KLM-corporation/ac-pirates-arm64 C:\acp64
 cd C:\acp64
-powershell -ExecutionPolicy Bypass -File .\package.ps1 -Xapk "C:\chemin\vers\le\jeu.xapk"
+powershell -ExecutionPolicy Bypass -File .\package.ps1 -Xapk "C:\path\to\the\game.xapk"
 ```
 
-- Avec l'APK et l'OBB séparés : `-Xapk "C:\...\jeu.apk" -Obb "C:\...\main.253.com.ubisoft.assassin.pirates.obb"`.
-- `-ExecutionPolicy Bypass` lève, pour cette commande seulement, le blocage des scripts PowerShell de Windows. Pour
-  ne plus avoir à l'écrire : `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, puis `.\package.ps1 ...`.
-- Clone le dépôt dans un dossier court (comme `C:\acp64`) : la compilation crée des chemins longs, et Windows
-  refuse ceux de plus de 260 caractères.
-- La première compilation prend de 2 à 10 minutes selon le PC. Résultat : `out\AC_Pirates_arm64.apk` (29 Mo). Les
-  lignes `WARNING:` de Java pendant la signature sont normales.
-- Les fichiers du jeu sont copiés dans `work\` (`original.apk`, `libSparkApp_arm32.so`, `obb\`). Les fois suivantes,
-  `.\package.ps1` suffit, sans `-Xapk`.
-- **La clé de signature** est créée au premier passage : `work\acp64.keystore`, avec son mot de passe dans
-  `work\keystore.properties`. Garde ces deux fichiers. Android n'accepte une mise à jour que si elle est signée par
-  la même clé : avec une autre clé, il faudrait désinstaller le jeu, ce qui efface la sauvegarde.
+- With a separate APK and OBB: `-Xapk "C:\...\game.apk" -Obb "C:\...\main.253.com.ubisoft.assassin.pirates.obb"`.
+- `-ExecutionPolicy Bypass` lifts Windows' block on PowerShell scripts, for this command only. To stop typing it:
+  `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, then `.\package.ps1 ...`.
+- Clone the repository into a short folder (like `C:\acp64`): the build creates long paths, and Windows rejects
+  paths longer than 260 characters.
+- The first build takes 2 to 10 minutes depending on the PC. Result: `out\AC_Pirates_arm64.apk` (29 MB). Java
+  `WARNING:` lines during signing are normal.
+- The game's files are copied into `work\` (`original.apk`, `libSparkApp_arm32.so`, `obb\`). Next time,
+  `.\package.ps1` is enough, without `-Xapk`.
+- **The signing key** is created on the first run: `work\acp64.keystore`, with its password in
+  `work\keystore.properties`. Keep both files, and a backup. Android only accepts an update signed with the same key:
+  with another key, you would have to uninstall the game, which erases the save. If you build the game from another
+  folder or another PC, copy these two files into its `work\` first.
+- The scripts print their messages in French on a French Windows, in English otherwise. To choose:
+  `$env:ACP64_LANG = "en"` (or `"fr"`) in PowerShell before running them.
 
-## Installer sur le téléphone
+## Install on the phone
 
-Il faut installer l'APK **et** copier les données du jeu (l'OBB) au bon endroit.
+You need to install the APK **and** copy the game data (the OBB) to the right place.
 
-**Avec ADB** (débogage USB ou sans fil activé dans les options pour les développeurs du téléphone) :
+**With ADB** (USB or wireless debugging enabled in the phone's developer options):
 
 ```powershell
 .\installer_telephone.bat
 ```
 
-Le script installe l'APK dans le profil principal du téléphone, puis copie l'OBB de `work\obb` dans
-`Android/obb/com.ubisoft.assassin.pirates/` : environ 800 Mo, de 30 secondes en USB à quelques minutes en Wi-Fi.
-Attends le message « Termine » avant d'ouvrir le jeu. Ouvert pendant la copie, le jeu affiche un écran de
-téléchargement qui n'aboutit jamais ; il suffit alors de le relancer après « Termine ».
+The script installs the APK in the phone's main profile, then copies the OBB from `work\obb` to
+`Android/obb/com.ubisoft.assassin.pirates/`: about 800 MB, from 30 seconds over USB to a few minutes over Wi-Fi.
+Wait for the "Done" message before opening the game. If it is opened during the copy, the game shows a download
+screen that never finishes; just start it again after "Done".
 
-Au lancement, si son OBB n'est pas complet, le jeu efface tous les fichiers de son dossier OBB qui ne sont pas cet
-OBB complet (`SparkActivity.downloadOBB`). Le script copie donc l'OBB dans un dossier à part
-(`Android/obb/acp64-copie`), puis le déplace d'un coup dans celui du jeu : même ouvert trop tôt, le jeu n'a rien à
-effacer. Le script ne recopie pas un OBB déjà complet sur le téléphone : relancé après une mise à jour, il ne prend
-que quelques secondes.
+When it starts without a complete OBB, the game deletes every file in its OBB folder other than that complete OBB
+(`SparkActivity.downloadOBB`). So the script copies the OBB into a separate folder (`Android/obb/acp64-copie`), then
+moves it into the game's folder in one go: even if it is opened too early, the game has nothing to delete. The script
+does not copy again an OBB that is already complete on the phone: run again after an update, it only takes a few
+seconds.
 
-`adb` est cherché dans le `PATH`, puis dans le dossier `platform-tools` du SDK Android. Si plusieurs appareils sont
-connectés, donne le numéro de série affiché par `adb devices` : `.\installer_telephone.bat <numéro>`.
+`adb` is looked up in the `PATH`, then in the Android SDK's `platform-tools` folder. If several devices are
+connected, give the serial number shown by `adb devices`: `.\installer_telephone.bat <serial>`.
 
-**À la main** :
+**By hand**:
 
-1. Copie `out\AC_Pirates_arm64.apk` sur le téléphone et ouvre-le. Autorise l'installation d'applications inconnues
-   si Android le demande. Si Play Protect avertit : *Plus d'infos > Installer quand même*.
-2. Branche le téléphone au PC en mode *Transfert de fichiers*. Sur le PC, ouvre *Mémoire interne > Android > obb*,
-   crée un dossier nommé exactement `com.ubisoft.assassin.pirates` et copie dedans
-   `main.253.com.ubisoft.assassin.pirates.obb` (il est dans `work\obb\`). Les gestionnaires de fichiers du téléphone
-   n'ont souvent plus le droit d'écrire dans `Android/obb` (Android 11 et plus) ; le PC, si.
-3. **Une fois la copie terminée**, lance « Pirates ». Si le jeu est ouvert pendant la copie, il efface le fichier en
-   cours de copie : il faut alors le fermer et recommencer l'étape 2. Android prévient que l'application a été conçue
-   pour une ancienne version : *OK*. Accepte les autorisations demandées.
+1. Copy `out\AC_Pirates_arm64.apk` to the phone and open it. Allow installing unknown apps if Android asks. If Play
+   Protect warns you: *More details > Install anyway*.
+2. Connect the phone to the PC in *File transfer* mode. On the PC, open *Internal storage > Android > obb*, create a
+   folder named exactly `com.ubisoft.assassin.pirates` and copy `main.253.com.ubisoft.assassin.pirates.obb` into it
+   (it is in `work\obb\`). File managers on the phone are often no longer allowed to write to `Android/obb` (Android
+   11 and newer); the PC is.
+3. **Once the copy is finished**, start "Pirates". If the game is opened during the copy, it deletes the file being
+   copied: close it and do step 2 again. Android warns that the app was built for an older version: *OK*. Accept the
+   permissions it asks for.
 
-## Problèmes connus
+## Known issues
 
-- **Écran de téléchargement qui n'aboutit jamais au démarrage** : l'OBB manque, est incomplet (jeu ouvert pendant
-  la copie), ou n'a pas le bon nom ou le bon dossier
-  (`Android/obb/com.ubisoft.assassin.pirates/main.253.com.ubisoft.assassin.pirates.obb`, 817 249 909 octets).
-  Ferme le jeu et relance `installer_telephone.bat` : il recopie l'OBB s'il n'a pas la bonne taille. Le jeu doit
-  aussi être installé dans le profil principal du téléphone : l'Espace privé et le profil professionnel ont leur
-  propre stockage, où il ne voit pas l'OBB copié par le PC.
-- **« Application non installée »** ou `INSTALL_FAILED_UPDATE_INCOMPATIBLE` : une autre version du jeu est déjà
-  installée (le jeu d'origine, ou un APK signé par une autre clé). Désinstalle-la d'abord (la sauvegarde est perdue).
-- **Le bouton JOUER reste grisé** au premier écran : le jeu charge la partie en arrière-plan, jusqu'à une minute.
-- **Le jeu plante** : `adb shell setprop debug.acp64.verbose 1`, relance le jeu, puis `adb logcat -s ACP64 DEBUG`
-  montre ce que fait le runtime (voir « Diagnostic »).
+- **Download screen that never finishes at startup**: the OBB is missing, incomplete (game opened during the copy),
+  or has the wrong name or folder (`Android/obb/com.ubisoft.assassin.pirates/main.253.com.ubisoft.assassin.pirates.obb`,
+  817,249,909 bytes). Close the game and run `installer_telephone.bat` again: it copies the OBB again if its size is
+  wrong. The game must also be installed in the phone's main profile: the Private space and the work profile have
+  their own storage, where it does not see the OBB copied by the PC.
+- **"App not installed"** or `INSTALL_FAILED_UPDATE_INCOMPATIBLE`: another version of the game is already installed
+  (the original game, or an APK signed with another key). Uninstall it first (the save is lost).
+- **The Play button stays greyed out** on the title screen: the game is loading your save in the background, for up
+  to a minute.
+- **The game crashes**: `adb shell setprop debug.acp64.verbose 1`, start the game again, then
+  `adb logcat -s ACP64 DEBUG` shows what the runtime does (see "Diagnostics").
 
-## Organisation
+## Layout
 
-- `package.ps1` : construit l'APK (runtime, Java, manifeste, signature) ; `build.ps1` : compile le runtime seul ;
-  `tools/android_sdk.ps1` : recherche des outils du SDK ; `tools/import_game.py` : importe le XAPK ou l'APK dans `work\` ;
-  `installer_telephone.bat` : installation par ADB.
-- `src/mem.*` : espace d'adressage 32 bits du jeu (identité dans les 4 premiers Go du processus), tas dlmalloc.
-- `src/elf_loader.*` : chargement et relocation de la bibliothèque ARM32.
-- `src/cpu.*`, `src/thunk.h` : contextes Dynarmic par thread, appels hôte ↔ jeu, passerelles (`svc`).
-- `src/hle/` : libc/pthread/stdio/réseau/temps… réimplémentés avec l'ABI bionic 32 bits.
-- `src/jni/` : JNIEnv/JavaVM 32 bits ; `natives_gen.cpp` est généré par `tools/gen_natives.py` (qui demande `pyelftools`).
-- `src/android/` : NativeActivity, libandroid, EGL/GLES 2, OpenSL ES, fenêtre de saisie des codes (`cheat_ui.*`).
-- `src/cheat/` : codes de triche (voir plus bas) ; `src/game/perf_patches.cpp` : corrections de performances.
-- `tools/repack.py` : reconstruit l'APK ; `tools/patch_dex.py` : corrige un bug Java d'origine
-  (`AlarmService.SafeParseInt` récursif).
-- `tools/patch_manifest.py` : plein écran jusqu'au format 3:1, gestion de tous les changements de configuration par le jeu (sinon Android recrée l'activité et le moteur se bloque : pliage, taille d'affichage, mode sombre…) et `targetSdkVersion` 24 (Android 15 refuse les applications ciblant moins).
-- `tools/java/` : fenêtre de saisie des codes, compilée en `classes3.dex` par `package.ps1` ; `tools/lua/` : scripts Lua du code de triche et de mise au point ; `tools/java_test/` : outil de test (touchers multi-doigts depuis adb) ; les scripts `tools/*.sh` (Git Bash) servent aux mesures sur le téléphone.
-- `third_party/` : Dynarmic, en-têtes Boost, dlmalloc (origines et licences dans `third_party/README.md`).
+- `package.ps1`: builds the APK (runtime, Java, manifest, signature); `build.ps1`: builds the runtime only;
+  `tools/android_sdk.ps1`: finds the SDK tools; `tools/import_game.py`: imports the XAPK or APK into `work\`;
+  `installer_telephone.bat`: installation through ADB.
+- `src/mem.*`: the game's 32-bit address space (identity-mapped in the first 4 GB of the process), dlmalloc heap.
+- `src/elf_loader.*`: loading and relocating the ARM32 library.
+- `src/cpu.*`, `src/thunk.h`: per-thread Dynarmic contexts, host ↔ game calls, gateways (`svc`).
+- `src/hle/`: libc/pthread/stdio/network/time… reimplemented with the 32-bit bionic ABI.
+- `src/jni/`: 32-bit JNIEnv/JavaVM; `natives_gen.cpp` is generated by `tools/gen_natives.py` (which needs
+  `pyelftools`).
+- `src/android/`: NativeActivity, libandroid, EGL/GLES 2, OpenSL ES, cheat code input window (`cheat_ui.*`).
+- `src/cheat/`: cheat codes (see below); `src/game/perf_patches.cpp`: performance fixes.
+- `tools/repack.py`: rebuilds the APK; `tools/patch_dex.py`: fixes a bug in the original Java code (recursive
+  `AlarmService.SafeParseInt`).
+- `tools/patch_manifest.py`: full screen up to a 3:1 aspect ratio, every configuration change handled by the game
+  (otherwise Android recreates the activity and the engine hangs: folding, display size, dark mode…) and
+  `targetSdkVersion` 24 (Android 15 refuses apps targeting less).
+- `tools/java/`: cheat code input window, compiled into `classes3.dex` by `package.ps1`; `tools/lua/`: Lua scripts of
+  the cheat codes and for debugging; `tools/java_test/`: test tool (multi-finger touches from adb); the
+  `tools/*.sh` scripts (Git Bash) are for measurements on the phone.
+- `third_party/`: Dynarmic, Boost headers, dlmalloc (origins and licenses in `third_party/README.md`).
+- The cheat code window (`tools/java/com/acp64/CheatDialog.java`) is in French on a phone set to French, in English
+  otherwise.
 
-Pour un émulateur Android x86_64 (tests) : `.\package.ps1 -Abi x86_64` donne `out\AC_Pirates_emulator_x86_64.apk`.
+For an x86_64 Android emulator (testing): `.\package.ps1 -Abi x86_64` gives `out\AC_Pirates_emulator_x86_64.apk`.
 
-## Diagnostic
+## Diagnostics
 
-`adb shell setprop debug.acp64.verbose 1` active les journaux détaillés (tag `ACP64`, à lire avec
-`adb logcat -s ACP64`) ; `adb shell setprop debug.acp64.verbose 0` les coupe (ils ralentissent le jeu). Le
-réglage est relu au lancement du jeu et disparaît au redémarrage du téléphone.
+`adb shell setprop debug.acp64.verbose 1` turns on detailed logs (tag `ACP64`, read them with
+`adb logcat -s ACP64`); `adb shell setprop debug.acp64.verbose 0` turns them off (they slow the game down). The
+setting is read when the game starts and is cleared when the phone restarts.
 
-## Code de triche (ressources infinies)
+## Cheat code (infinite resources)
 
-La séquence secrète **Volume + , Volume + , Volume − , Volume −** (en moins de 4 s, en jeu) ouvre une fenêtre
-« Code de triche » ; `klm` (majuscules ou minuscules) active ou coupe les ressources infinies : l'or, le bois,
-les vivres et les livres du joueur sont remplis jusqu'aux limites du jeu (9 999 999 pour l'or, 9 999 pour le
-reste) quelques fois par seconde. Le réglage est mémorisé entre deux lancements (fichier `infinite_resources`
-dans le dossier privé de l'application). La fenêtre ne s'ouvre jamais sous un doigt posé sur l'écran.
+The secret sequence **Volume +, Volume +, Volume −, Volume −** (within 4 s, in game) opens a "Cheat code" window;
+`klm` (upper or lower case) turns infinite resources on or off: the player's gold, wood, supplies and books are
+refilled up to the game's limits (9,999,999 for gold, 9,999 for the rest) a few times per second. The setting is
+remembered across launches (file `infinite_resources` in the app's private folder). The window never opens under a
+finger touching the screen.
 
-Un geste tactile avait été essayé d'abord : il se déclenchait par erreur en jouant (volant + canons aux deux
-pouces) et les appuis à trois doigts ou plus sont avalés par certains téléphones (nubia, REDMAGIC… : capture
-d'écran à trois doigts, le jeu ne reçoit qu'une annulation). Les touches de volume n'interfèrent pas avec le
-tactile. Chaque appui peut arriver deux fois au jeu à une image d'intervalle : `cheat_ui.cpp` ignore le second.
+A touch gesture was tried first: it triggered by mistake while playing (wheel + cannons with both thumbs), and
+presses with three fingers or more are swallowed by some phones (nubia, REDMAGIC…: three-finger screenshot, the game
+only receives a cancel). The volume keys do not interfere with touch. Each press can reach the game twice, one frame
+apart: `cheat_ui.cpp` ignores the second one.
 
-### Code `queen` : le Queen Anne's Revenge
+### `queen` code: the Queen Anne's Revenge
 
-`queen` (même fenêtre) débloque le Queen Anne's Revenge, le navire (identifiant `FRIGATE4`, toutes les
-caractéristiques et le modèle 3D sont dans les données) que le jeu vendait en achat intégré (`ubi.mobilesdk.pirates.blackbeard`)
-et qui ne peut plus s'acheter. `tools/lua/unlock_queen.lua` appelle `playerProfile:BuyShip("FRIGATE4")`, la fonction
-que la boutique du jeu appelle une fois un navire payé ; il apparaît ensuite dans NAVIRES (bouton CHOISIR).
+`queen` (same window) unlocks the Queen Anne's Revenge, the ship (identifier `FRIGATE4`; all its characteristics and
+its 3D model are in the data) that the game sold as an in-app purchase (`ubi.mobilesdk.pirates.blackbeard`) and that
+can no longer be bought. `tools/lua/unlock_queen.lua` calls `playerProfile:BuyShip("FRIGATE4")`, the function the
+game's shop calls once a ship is paid for; it then shows up in your ships, where you can select it.
 
-Le jeu remplace les données de navires du profil quand il charge la sauvegarde (et à d'autres moments) : le
-runtime vérifie donc la possession environ une fois par seconde, et recommence l'octroi si besoin. Rien n'est accordé au profil par défaut du menu principal (`_SessionNumber` à 0 et `_IsInMainMenu` vrai), qui est remplacé au chargement. Le code est
-mémorisé (fichier `queen_anne` dans le dossier privé de l'application) : le bateau est de nouveau là à chaque lancement,
-sans retaper le code. Tapé avant que la partie soit chargée, le code est accepté (« sera débloqué dès que ta partie est
-chargée ») et un second message « débloqué » arrive plus tard (`CheatDialog.notifyEvent`, appelé par le runtime).
+The game replaces the profile's ship data when it loads the save (and at other times): so the runtime checks
+ownership about once per second, and grants the ship again if needed. Nothing is granted to the main menu's default
+profile (`_SessionNumber` at 0 and `_IsInMainMenu` true), which is replaced on load. The code is remembered (file
+`queen_anne` in the app's private folder): the ship is back at every launch, without typing the code again. Typed
+before your game is loaded, the code is accepted ("unlocks once your game is loaded") and a second "unlocked"
+message comes later (`CheatDialog.notifyEvent`, called by the runtime).
 
-Fonctionnement commun aux deux codes :
+How both codes work:
 
-- La logique du jeu (économie comprise) est du LuaJIT et la bibliothèque exporte toute l'API C de Lua.
-  `src/cheat/cheat.cpp` remplace la première instruction de `lua_pcall` par un `svc`
-  (`cpu::install_thumb_entry_hook`) : à chaque appel, le runtime peut exécuter un morceau de Lua sur le fil
-  qui fait tourner les scripts, entre deux appels du jeu, donc sans accès concurrent à l'état Lua.
-- `tools/lua/cheat_infinite.lua` (intégré à la compilation par CMake) écrit dans `playerProfile`
-  (`SoftCurrency`, `Wood`, `Supplies`, `Books`) en passant par les propriétés du jeu, qui bornent les valeurs
-  et préviennent l'interface.
-- `tools/java/com/acp64/CheatDialog.java` est la fenêtre de saisie ; elle appelle
-  `Java_com_acp64_CheatDialog_nativeSubmit` (`src/android/cheat_ui.cpp`) qui vérifie le code.
+- The game logic (economy included) is LuaJIT, and the library exports the whole Lua C API. `src/cheat/cheat.cpp`
+  replaces the first instruction of `lua_pcall` with an `svc` (`cpu::install_thumb_entry_hook`): at every call, the
+  runtime can run a Lua chunk on the thread that runs the scripts, between two calls from the game, so without
+  concurrent access to the Lua state.
+- `tools/lua/cheat_infinite.lua` (embedded at build time by CMake) writes to `playerProfile` (`SoftCurrency`,
+  `Wood`, `Supplies`, `Books`) through the game's properties, which clamp the values and notify the interface.
+- `tools/java/com/acp64/CheatDialog.java` is the input window; it calls `Java_com_acp64_CheatDialog_nativeSubmit`
+  (`src/android/cheat_ui.cpp`), which checks the code.
 
-## Fenêtre détruite pendant que le jeu l'interroge
+## Window destroyed while the game queries it
 
-Quand le jeu passe en arrière-plan (accueil, page « Plus de jeux », verrouillage…), Android détruit la fenêtre native,
-mais le moteur continue un instant à lui demander sa taille avec l'ancien identifiant (et avant que la nouvelle existe).
-`ANativeWindow_getWidth(nullptr)` plantait le jeu en segfault (adresse 0x90). Les fonctions `ANativeWindow_*` de
-`android_glue.cpp` répondent maintenant avec les dernières valeurs connues quand l'identifiant n'existe plus
-(`PtrMap::find_host`, sans journal), et `eglCreateWindowSurface` renvoie `EGL_NO_SURFACE` plutôt que de planter.
+When the game goes to the background (home screen, "More games" page, lock…), Android destroys the native window,
+but the engine keeps asking for its size for a moment with the old handle (and before the new one exists).
+`ANativeWindow_getWidth(nullptr)` crashed the game with a segfault (address 0x90). The `ANativeWindow_*` functions
+of `android_glue.cpp` now answer with the last known values when the handle no longer exists (`PtrMap::find_host`,
+without logging), and `eglCreateWindowSurface` returns `EGL_NO_SURFACE` instead of crashing.
 
-## Touchers annulés par le système
+## Touches cancelled by the system
 
-Quand Android retire un toucher à l'application (`ACTION_CANCEL` : capture d'écran à trois doigts, fenêtre qui
-prend le focus…), le jeu ne relâche jamais ces doigts : son tactile reste bloqué (le volant ne répond plus, plus
-aucun contour blanc) jusqu'au redémarrage. `android_glue.cpp` remplace donc l'annulation, pour le jeu, par le
-relâchement de chaque doigt listé (`POINTER_UP` puis `UP`, `LiftEvent`), et réveille la boucle d'entrée du jeu
-pour qu'elle les lise.
+When Android takes a touch away from the app (`ACTION_CANCEL`: three-finger screenshot, a window taking the focus…),
+the game never releases those fingers: its touch input stays stuck (the wheel no longer responds, no more white
+outline) until it restarts. `android_glue.cpp` therefore replaces the cancel, for the game, with the release of each
+listed finger (`POINTER_UP` then `UP`, `LiftEvent`), and wakes up the game's input loop so that it reads them.
 
-## Performances : 60 images/s en 3D
+## Performance: 60 fps in 3D
 
-Mesures sur le REDMAGIC NX799J (Snapdragon 8 Elite), écran à 60 Hz pour le jeu, images réellement affichées
-(`tools/fps_sample.py`, horodatages de SurfaceFlinger) :
+Measured on the REDMAGIC NX799J (Snapdragon 8 Elite), display at 60 Hz for the game, frames actually presented
+(`tools/fps_sample.py`, SurfaceFlinger timestamps):
 
-| Version | Navigation en mer (3D) | Thread du jeu |
+| Version | Sailing at sea (3D) | Game thread |
 |---|---|---|
-| Avant (jeu d'origine plafonné à 30) | 30 images/s ; forcé à 60 : ~52 images/s | 95 % (à 60 Hz) |
-| Après | **59,9 images/s, aucune image en retard** (43 s de navigation, 60 s avec la pêche) | ~40 % |
+| Before (original game capped at 30) | 30 fps; forced to 60: ~52 fps | 95% (at 60 Hz) |
+| After | **59.9 fps, no late frame** (43 s of sailing, 60 s with fishing) | ~40% |
 
-Le jeu passe aussi les scènes 3D à 60 (`GP.PARAMS.FpsClampingTarget = 60`, et `TargetElapsedTime = 1/60` sur la
-boucle de jeu, `fps60` dans `src/game/perf_patches.cpp`). Son horloge suit le temps réel (la globale Lua `Dt` est la
-durée mesurée de l'image ; `AbsoluteTime` avance de 12,05 s pour 12,05 s réelles), donc 60 ne change pas la vitesse
-du jeu. Le moteur prévoit d'ailleurs 60 par défaut (`GameLoop.TargetElapsedTime = 1/60`) ; les téléphones de
-l'époque étaient réglés à 30.
+The game also runs its 3D scenes at 60 (`GP.PARAMS.FpsClampingTarget = 60`, and `TargetElapsedTime = 1/60` on the
+game loop, `fps60` in `src/game/perf_patches.cpp`). Its clock follows real time (the Lua global `Dt` is the measured
+frame time; `AbsoluteTime` advances by 12.05 s in 12.05 real seconds), so 60 does not change the game's speed. The
+engine actually defaults to 60 (`GameLoop.TargetElapsedTime = 1/60`); the phones of the time were set to 30.
 
-Ce que le profilage a montré (thread du jeu, avant) et les corrections (`src/game/perf_patches.cpp`, chacune
-désactivable avec `adb shell setprop debug.acp64.<nom> 0` pour comparer) :
+What profiling showed (game thread, before) and the fixes (`src/game/perf_patches.cpp`, each one can be turned off
+with `adb shell setprop debug.acp64.<name> 0` to compare):
 
-- **Ramasse-miettes Lua (~50 % du thread du jeu)** : le moteur fait tourner le GC de LuaJIT sur un thread annexe
-  pendant le rendu (`StartAsyncGarbageCollection` / `StopAsyncGarbageCollection`), mais `lua_asynchronous_gc_step`
-  force un pas même quand le GC est au repos : un nouveau cycle complet démarre dès que le précédent finit, et les
-  allocations du thread du jeu, qui trouvent toujours le GC en plein cycle, paient elles aussi des pas
-  (`lj_gc_step`). `gcpace` : le thread annexe ne démarre un cycle que quand il est dû (le tas a grandi du rapport
-  `pause`, comme dans LuaJIT) ; `gcdefer` : les pas du thread du jeu sont laissés au thread annexe tant que le tas
-  reste sous 1,5 fois le seuil normal. Le tas oscille entre ~45 et ~90 Mo.
-- **Compilateur LuaJIT (~1,5 ms par image)** : LuaJIT 2.0 doit placer son code machine à moins de 32 Mo de sa VM,
-  au milieu de cette bibliothèque de 19 Mo : il n'y arrive jamais, enregistre une trace, échoue à la placer
-  (32 essais de `mmap`/`munmap`) et recommence, ~800 fois par seconde. `luajit_off` coupe le compilateur au démarrage
-  (`jit.off()`) : l'interpréteur seul va plus vite.
-- **Attente active** : `IdleCurThread` (le « sommeil » du moteur, utilisé par `android_main` toutes les 16 ms) tourne
-  en boucle sur `clock_gettime` + `sched_yield` (1,2 million d'appels par seconde, un cœur occupé à 100 %). `idle` :
-  vrai sommeil.
-- **Accès mémoire du JIT** : `fastmem` (Dynarmic) : la mémoire invitée étant à la même adresse dans le processus, une
-  lecture ou une écriture invitée devient une seule instruction au lieu d'un passage par la table des pages.
-- **Attachements Java** : `SparkSystem::JNIEnvWrapper` attachait et détachait `android_main` de la VM Java toutes les
-  16 ms (un nouveau `java.lang.Thread` à chaque fois). Le détachement demandé par le jeu ne détache plus vraiment ; le
-  thread est détaché quand il se termine (`jni_bridge.cpp`).
+- **Lua garbage collector (~50% of the game thread)**: the engine runs LuaJIT's GC on a helper thread during
+  rendering (`StartAsyncGarbageCollection` / `StopAsyncGarbageCollection`), but `lua_asynchronous_gc_step` forces a
+  step even when the GC is idle: a new full cycle starts as soon as the previous one ends, and the game thread's
+  allocations, which always find the GC mid-cycle, pay for steps too (`lj_gc_step`). `gcpace`: the helper thread only
+  starts a cycle when one is due (the heap has grown by the `pause` ratio, as in LuaJIT); `gcdefer`: the game
+  thread's steps are left to the helper thread as long as the heap stays under 1.5 times the normal threshold. The
+  heap oscillates between ~45 and ~90 MB.
+- **LuaJIT compiler (~1.5 ms per frame)**: LuaJIT 2.0 must place its machine code within 32 MB of its VM, in the
+  middle of this 19 MB library: it never manages to, so it records a trace, fails to place it (32 `mmap`/`munmap`
+  attempts) and starts again, ~800 times per second. `luajit_off` turns the compiler off at startup (`jit.off()`):
+  the interpreter alone is faster.
+- **Busy waiting**: `IdleCurThread` (the engine's "sleep", used by `android_main` every 16 ms) spins on
+  `clock_gettime` + `sched_yield` (1.2 million calls per second, one core busy at 100%). `idle`: a real sleep.
+- **JIT memory accesses**: `fastmem` (Dynarmic): since guest memory is at the same address in the process, a guest
+  load or store becomes a single instruction instead of a page-table walk.
+- **Java attachments**: `SparkSystem::JNIEnvWrapper` attached and detached `android_main` from the Java VM every
+  16 ms (a new `java.lang.Thread` each time). The detach requested by the game no longer really detaches; the thread
+  is detached when it exits (`jni_bridge.cpp`).
 
-Outils de mesure (avec `debug.acp64.verbose=1`) : chaque seconde, `eglSwapBuffers` journalise images/s, temps de
-travail, pire image, puis les fonctions importées les plus appelées (`calls/s`) et les attentes bloquantes avec leur
-appelant (`waits:`), ainsi que les images de plus de 50 ms. Pour un profil : `<profileable android:shell="true"/>`
-est dans le manifeste, donc `simpleperf record --app com.ubisoft.assassin.pirates -e cpu-clock` fonctionne ; la sonde
-Lua `acp64_profdump(chemin)` écrit la carte des blocs compilés de chaque thread (`chemin.t<id>`), et
-`tools/prof_report.py perf.data <carte> <tid>` attribue les échantillons aux fonctions du jeu ARM32.
-`tools/goto_sea.sh` amène le jeu en mer depuis un démarrage, `tools/bench.sh` moyenne les statistiques d'images.
+Measurement tools (with `debug.acp64.verbose=1`): every second, `eglSwapBuffers` logs fps, work time, worst frame,
+then the most called imported functions (`calls/s`) and the blocking waits with their caller (`waits:`), as well as
+frames longer than 50 ms. For a profile: `<profileable android:shell="true"/>` is in the manifest, so
+`simpleperf record --app com.ubisoft.assassin.pirates -e cpu-clock` works; the Lua probe `acp64_profdump(path)`
+writes the map of each thread's compiled blocks (`path.t<id>`), and `tools/prof_report.py perf.data <map> <tid>`
+attributes the samples to the ARM32 game functions. `tools/goto_sea.sh` takes the game to sea from a fresh start,
+`tools/bench.sh` averages the frame statistics.
 
-## Mise au point
+## Debugging
 
-Avec `debug.acp64.verbose` à 1 (et `adb shell setprop log.tag.ACP64 V` pour voir les lignes de débogage), un
-fichier `probe.lua` copié dans `/sdcard/Android/data/com.ubisoft.assassin.pirates/files/` est exécuté dans
-l'interpréteur Lua du jeu à chaque modification (touche-le avant de le recopier : adb ne garde que la seconde) ;
-`acp64_log(texte)` écrit dans `probe.out` du même dossier (un `!` en début de texte l'envoie aussi dans logcat).
-`tools/lua/probe_*.lua` en sont des exemples (liste des globales, recherche des noms liés à l'argent, contenu
-des fonctions). `tools/java_test/Inj.java` injecte des touchers multi-doigts depuis adb (`app_process`) pour
-tester sans toucher l'écran.
+With `debug.acp64.verbose` at 1 (and `adb shell setprop log.tag.ACP64 V` to see the debug lines), a `probe.lua` file
+copied to `/sdcard/Android/data/com.ubisoft.assassin.pirates/files/` is run in the game's Lua interpreter every time
+it changes (touch it before copying it again: adb only keeps whole seconds); `acp64_log(text)` writes to `probe.out`
+in the same folder (a `!` at the start of the text also sends it to logcat). `tools/lua/probe_*.lua` are examples
+(list of globals, search for money-related names, function contents). `tools/java_test/Inj.java` injects
+multi-finger touches from adb (`app_process`), to test without touching the screen.
 
-## Licence
+## License
 
-Le code de ce dépôt (runtime, scripts, outils) est sous licence MIT : voir `LICENSE`. Les bibliothèques de
-`third_party/` gardent leur propre licence (voir `third_party/README.md`).
+The code in this repository (runtime, scripts, tools) is under the MIT license: see `LICENSE`. The libraries in
+`third_party/` keep their own licenses (see `third_party/README.md`).
 
-Projet non officiel, sans lien avec Ubisoft. Le jeu (code, données, nom et marques Assassin's Creed) appartient à
-Ubisoft et n'est pas couvert par cette licence.
+Unofficial project, not affiliated with Ubisoft. The game (code, data, Assassin's Creed name and trademarks) belongs
+to Ubisoft and is not covered by this license.
