@@ -3,33 +3,74 @@ rem Installe l'APK construit par package.ps1 sur le telephone connecte en ADB (U
 rem puis copie les donnees du jeu (fichier OBB de work\obb) dans Android/obb sur le telephone.
 rem   installer_telephone.bat [numero de serie ADB, si plusieurs appareils sont connectes]
 setlocal
-set PKG=com.ubisoft.assassin.pirates
-set APK=%~dp0out\AC_Pirates_arm64.apk
-if not "%~1"=="" set ANDROID_SERIAL=%~1
+set "PKG=com.ubisoft.assassin.pirates"
+set "APK=%~dp0out\AC_Pirates_arm64.apk"
+if not "%~1"=="" set "ANDROID_SERIAL=%~1"
 
-where adb >nul 2>&1 || (echo adb introuvable : installe les "platform-tools" du SDK Android et ajoute leur dossier au PATH. & exit /b 1)
-if not exist "%APK%" (echo %APK% manque : lance d'abord package.ps1. & exit /b 1)
-set OBB=
-for %%f in ("%~dp0work\obb\main.*.%PKG%.obb") do set "OBB=%%~ff"
+rem adb : dans le PATH, sinon dans le SDK Android (memes emplacements que package.ps1).
+set "ADB="
+for %%a in (adb.exe) do set "ADB=%%~$PATH:a"
+if not defined ADB if defined ANDROID_HOME if exist "%ANDROID_HOME%\platform-tools\adb.exe" set "ADB=%ANDROID_HOME%\platform-tools\adb.exe"
+if not defined ADB if defined ANDROID_SDK_ROOT if exist "%ANDROID_SDK_ROOT%\platform-tools\adb.exe" set "ADB=%ANDROID_SDK_ROOT%\platform-tools\adb.exe"
+if not defined ADB if exist "%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe" set "ADB=%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe"
+if not defined ADB (echo adb introuvable : installe les Platform-Tools du SDK Android. & exit /b 1)
+
+if not exist "%APK%" (echo out\AC_Pirates_arm64.apk manque : lance d'abord package.ps1. & exit /b 1)
+set "OBB="
+for %%f in ("%~dp0work\obb\main.*.%PKG%.obb") do set "OBB=%%~ff" & set "OBBNAME=%%~nxf" & set "OBBSIZE=%%~zf"
 if not defined OBB (echo Pas de fichier OBB dans work\obb : lance package.ps1 -Xapk avec le XAPK du jeu, ou copie l'OBB a la main. & exit /b 1)
+set "DIR=/sdcard/Android/obb/%PKG%"
+set "DEST=/sdcard/Android/obb/%PKG%/%OBBNAME%"
 
-adb get-state >nul 2>&1 || (echo Aucun telephone pret, ou plusieurs : voir "adb devices" et donner le numero de serie. & exit /b 1)
+"%ADB%" get-state >nul 2>&1 || (echo Aucun telephone pret, ou plusieurs : voir "adb devices" et donner le numero de serie. & exit /b 1)
 
-echo Installation de l'APK...
-adb install -r "%APK%"
+echo Installation de l'APK. Si le telephone demande une confirmation, accepte-la.
+"%ADB%" install -r "%APK%"
 if errorlevel 1 goto install_failed
 
-echo Copie des donnees du jeu (environ 800 Mo)...
-adb shell mkdir -p /sdcard/Android/obb/%PKG%
-adb push "%OBB%" /sdcard/Android/obb/%PKG%/
-if errorlevel 1 exit /b 1
+rem Le jeu ne doit pas tourner pendant la copie : sans OBB complet, il affiche un ecran de telechargement, et le
+rem service de telechargement de Google qu'il contient peut effacer un OBB dont la taille n'est pas la bonne.
+"%ADB%" shell am force-stop %PKG%
 
+call :obb_on_phone
+if not errorlevel 1 (
+    echo Les donnees du jeu sont deja sur le telephone.
+    goto done
+)
+
+echo.
+echo Copie des donnees du jeu, %OBBNAME%, environ 800 Mo. N'ouvre pas le jeu avant la fin.
+"%ADB%" shell mkdir -p "%DIR%"
+rem Copie sous un nom provisoire, puis renommage : le jeu ne voit jamais un OBB incomplet sous son vrai nom.
+"%ADB%" shell rm -f "%DEST%" "%DEST%.part"
+"%ADB%" push "%OBB%" "%DEST%.part"
+if errorlevel 1 goto copy_failed
+"%ADB%" shell mv -f "%DEST%.part" "%DEST%"
+if errorlevel 1 goto copy_failed
+call :obb_on_phone
+if errorlevel 1 goto copy_failed
+rem Si le jeu a quand meme ete ouvert pendant la copie, il est reste sur l'ecran de telechargement.
+"%ADB%" shell am force-stop %PKG%
+
+:done
 echo Termine. Lance "Pirates" sur le telephone.
 exit /b 0
 
+rem Code de retour 0 si l'OBB est sur le telephone avec la bonne taille. La comparaison se fait sur le telephone ;
+rem la commande est entre guillemets pour que cmd laisse les redirections au shell du telephone.
+:obb_on_phone
+"%ADB%" shell "[ $(stat -c %%s %DEST% 2>/dev/null || echo 0) = %OBBSIZE% ]" 2>nul
+exit /b %errorlevel%
+
 :install_failed
 echo.
-echo L'installation a echoue. Si le message parle de signature (INSTALL_FAILED_UPDATE_INCOMPATIBLE),
-echo une autre version du jeu est deja installee (le jeu d'origine, ou un APK signe par une autre cle) :
-echo desinstalle-la d'abord, ce qui efface la sauvegarde :   adb uninstall %PKG%
+echo L'installation a echoue. Si le message parle de signature, INSTALL_FAILED_UPDATE_INCOMPATIBLE,
+echo une autre version du jeu est deja installee : le jeu d'origine, ou un APK signe par une autre cle.
+echo Desinstalle-la d'abord, ce qui efface la sauvegarde :   adb uninstall %PKG%
+exit /b 1
+
+:copy_failed
+echo.
+echo La copie des donnees du jeu a echoue. Relance le script : l'installation est rapide, puis la copie reprend.
+"%ADB%" shell rm -f "%DEST%.part" >nul 2>&1
 exit /b 1

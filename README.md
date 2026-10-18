@@ -74,8 +74,13 @@ Il faut installer l'APK **et** copier les données du jeu (l'OBB) au bon endroit
 .\installer_telephone.bat
 ```
 
-Le script installe l'APK et copie l'OBB de `work\obb` dans `Android/obb/com.ubisoft.assassin.pirates/`. `adb` vient
-des Platform-Tools du SDK (dossier `platform-tools` du SDK, à ajouter au `PATH`). Si plusieurs appareils sont
+Le script installe l'APK, puis copie l'OBB de `work\obb` dans `Android/obb/com.ubisoft.assassin.pirates/` : environ
+800 Mo, de 30 secondes en USB à quelques minutes en Wi-Fi. **N'ouvre pas le jeu avant le message « Termine »** :
+sans OBB complet, le jeu reste sur un écran de téléchargement. Le script arrête le jeu pendant la copie, copie l'OBB
+sous un nom provisoire puis le renomme, pour que le jeu ne voie jamais un fichier incomplet. Il ne recopie pas un
+OBB déjà présent sur le téléphone : relancer le script après une mise à jour ne prend que quelques secondes.
+
+`adb` est cherché dans le `PATH`, puis dans le dossier `platform-tools` du SDK Android. Si plusieurs appareils sont
 connectés, donne le numéro de série affiché par `adb devices` : `.\installer_telephone.bat <numéro>`.
 
 **À la main** :
@@ -86,13 +91,17 @@ connectés, donne le numéro de série affiché par `adb devices` : `.\installer
    crée un dossier nommé exactement `com.ubisoft.assassin.pirates` et copie dedans
    `main.253.com.ubisoft.assassin.pirates.obb` (il est dans `work\obb\`). Les gestionnaires de fichiers du téléphone
    n'ont souvent plus le droit d'écrire dans `Android/obb` (Android 11 et plus) ; le PC, si.
-3. Lance « Pirates ». Android prévient que l'application a été conçue pour une ancienne version : *OK*. Accepte les
-   autorisations demandées.
+3. Une fois la copie terminée, lance « Pirates ». Android prévient que l'application a été conçue pour une ancienne
+   version : *OK*. Accepte les autorisations demandées.
 
 ## Problèmes connus
 
-- **Écran de téléchargement qui n'aboutit jamais au démarrage** : l'OBB manque, ou n'a pas le bon nom ou le bon
-  dossier (`Android/obb/com.ubisoft.assassin.pirates/main.253.com.ubisoft.assassin.pirates.obb`).
+- **Écran de téléchargement qui n'aboutit jamais au démarrage** : l'OBB manque, est incomplet (jeu ouvert pendant
+  la copie), ou n'a pas le bon nom ou le bon dossier
+  (`Android/obb/com.ubisoft.assassin.pirates/main.253.com.ubisoft.assassin.pirates.obb`, 817 249 909 octets).
+  Ferme le jeu et relance `installer_telephone.bat` : il recopie l'OBB s'il n'a pas la bonne taille. Installe aussi
+  le jeu dans le profil principal du téléphone : l'Espace privé et le profil professionnel ont leur propre stockage,
+  où le jeu ne voit pas l'OBB copié par le PC.
 - **« Application non installée »** ou `INSTALL_FAILED_UPDATE_INCOMPATIBLE` : une autre version du jeu est déjà
   installée (le jeu d'origine, ou un APK signé par une autre clé). Désinstalle-la d'abord (la sauvegarde est perdue).
 - **Le bouton JOUER reste grisé** au premier écran : le jeu charge la partie en arrière-plan, jusqu'à une minute.
