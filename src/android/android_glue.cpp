@@ -9,6 +9,7 @@
 #include <dlfcn.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <deque>
@@ -19,6 +20,7 @@
 
 #include "../cheat/cheat.h"
 #include "../elf_loader.h"
+#include "../game/perf_patches.h"
 #include "../hle/hle.h"
 #include "../jni/jni_bridge.h"
 #include "../mem.h"
@@ -430,8 +432,81 @@ void* on_save_instance_state(ANativeActivity* a, size_t* out_len) {
     return copy;
 }
 
+// ANativeWindow_setFrameRate exists from Android 11 on, in libnativewindow.so.
+using SetFrameRateFn = int32_t (*)(ANativeWindow*, float, int8_t);
+SetFrameRateFn set_frame_rate_fn() {
+    static SetFrameRateFn fn = [] {
+        void* lib = dlopen("libnativewindow.so", RTLD_NOW);
+        void* f = lib ? dlsym(lib, "ANativeWindow_setFrameRate") : nullptr;
+        return reinterpret_cast<SetFrameRateFn>(f ? f : dlsym(RTLD_DEFAULT, "ANativeWindow_setFrameRate"));
+    }();
+    return fn;
+}
+
+// Refresh rates of the display's modes that have its current resolution (Display.getSupportedModes()), on the UI
+// thread. Empty if they cannot be read.
+std::vector<int> display_refresh_rates(ANativeActivity* a) {
+    JNIEnv* env = a->env;
+    std::vector<int> rates;
+    jclass activity_class = env->GetObjectClass(a->clazz);
+    jmethodID get_wm = env->GetMethodID(activity_class, "getWindowManager", "()Landroid/view/WindowManager;");
+    jobject wm = get_wm ? env->CallObjectMethod(a->clazz, get_wm) : nullptr;
+    jclass wm_class = env->FindClass("android/view/WindowManager");
+    jclass display_class = env->FindClass("android/view/Display");
+    jclass mode_class = env->FindClass("android/view/Display$Mode");
+    if (!env->ExceptionCheck() && wm && wm_class && display_class && mode_class) {
+        jmethodID get_display = env->GetMethodID(wm_class, "getDefaultDisplay", "()Landroid/view/Display;");
+        jmethodID get_mode = env->GetMethodID(display_class, "getMode", "()Landroid/view/Display$Mode;");
+        jmethodID get_modes = env->GetMethodID(display_class, "getSupportedModes", "()[Landroid/view/Display$Mode;");
+        jmethodID get_rate = env->GetMethodID(mode_class, "getRefreshRate", "()F");
+        jmethodID get_width = env->GetMethodID(mode_class, "getPhysicalWidth", "()I");
+        jmethodID get_height = env->GetMethodID(mode_class, "getPhysicalHeight", "()I");
+        jobject display = env->ExceptionCheck() ? nullptr : env->CallObjectMethod(wm, get_display);
+        jobject current = display ? env->CallObjectMethod(display, get_mode) : nullptr;
+        auto modes = static_cast<jobjectArray>(display ? env->CallObjectMethod(display, get_modes) : nullptr);
+        if (!env->ExceptionCheck() && current && modes) {
+            const jint width = env->CallIntMethod(current, get_width);
+            const jint height = env->CallIntMethod(current, get_height);
+            for (jsize i = 0, n = env->GetArrayLength(modes); i < n; i++) {
+                jobject mode = env->GetObjectArrayElement(modes, i);
+                if (env->CallIntMethod(mode, get_width) == width && env->CallIntMethod(mode, get_height) == height) {
+                    rates.push_back(static_cast<int>(env->CallFloatMethod(mode, get_rate) + 0.5f));
+                }
+                env->DeleteLocalRef(mode);
+            }
+        }
+        for (jobject o : {display, current, static_cast<jobject>(modes)}) {
+            if (o) env->DeleteLocalRef(o);
+        }
+    }
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        rates.clear();
+    }
+    for (jobject o : {static_cast<jobject>(activity_class), wm, static_cast<jobject>(wm_class),
+                      static_cast<jobject>(display_class), static_cast<jobject>(mode_class)}) {
+        if (o) env->DeleteLocalRef(o);
+    }
+    return rates;
+}
+
+// The game aims for the display's highest refresh rate (unless debug.acp64.fps fixes its frame rate), and asks the
+// system to run the display at that rate for its window: some phones give games 60 Hz unless they ask, and a
+// frame rate that does not match the refresh rate shows frames for 2 or 3 refreshes in turn (jerky).
+void set_frame_rate(ANativeActivity* a, ANativeWindow* w) {
+    const std::vector<int> rates = display_refresh_rates(a);
+    const int max_rate = rates.empty() ? 0 : *std::max_element(rates.begin(), rates.end());
+    if (max_rate >= 30 && !game::fixed_fps()) game::set_target_fps(max_rate);
+    const int fps = game::target_fps();
+    if (SetFrameRateFn fn = set_frame_rate_fn()) {
+        fn(w, static_cast<float>(fps), 0 /* ANATIVEWINDOW_FRAME_RATE_COMPATIBILITY_DEFAULT */);
+    }
+    ZLOGI("frame rate: %d fps (display up to %d Hz%s)", fps, max_rate, set_frame_rate_fn() ? "" : ", no frame rate request before Android 11");
+}
+
 void on_window_created(ANativeActivity* a, ANativeWindow* w) {
     ZLOGI("native window created: %dx%d", ANativeWindow_getWidth(w), ANativeWindow_getHeight(w));
+    set_frame_rate(a, w);
     forward(a, kOnNativeWindowCreated, cpu::Args().u32v(g_windows.to_guest(w)));
 }
 void on_window_resized(ANativeActivity* a, ANativeWindow* w) {

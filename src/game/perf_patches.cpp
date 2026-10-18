@@ -4,8 +4,11 @@
 #include <time.h>
 
 #include <atomic>
+#include <bit>
 #include <cerrno>
+#include <cstdlib>
 #include <initializer_list>
+#include <string>
 
 #include "../cpu.h"
 #include "../cheat/cheat.h"
@@ -108,6 +111,55 @@ void gc_step(JitCtx& j) {
     cpu::skip_function(j);
 }
 
+// geOctreeNode<geMeshEntity>::GetFrustumIntersection(const geAxisAlignedBox& box, const geVector4* planes,
+// float scale) const: 0 when the box (its extent multiplied by scale) is inside the 6 planes of the camera's
+// frustum, 2 when it is outside one of them, 1 when it crosses one. The octree calls it for each of its nodes and
+// objects, every frame: about 14% of the game thread at 144 fps, mostly spent in the four tiny calls it makes
+// (geAxisAlignedBox::GetCenter and GetExtent) and their returns, each a block lookup for the JIT. Same computation
+// natively, in the same order and without fused multiply-adds (the game's vmla/vmls round twice), so the results
+// are identical.
+void frustum_intersection(JitCtx& j) {
+#pragma clang fp contract(off)
+    const gaddr box = j.r()[1];
+    const gaddr planes = j.r()[2];
+    const float scale = std::bit_cast<float>(j.r()[3]);  // soft-float ABI: the float argument comes in r3
+    float lo[3], hi[3];
+    for (int i = 0; i < 3; i++) {
+        const float center = rd<float>(box + 4 * i);  // geAxisAlignedBox: center, then half extent
+        const float extent = scale * rd<float>(box + 12 + 4 * i);
+        lo[i] = center - extent;
+        hi[i] = center + extent;
+    }
+    u32 result = 0;
+    for (int k = 0; k < 6; k++) {
+        const gaddr p = planes + 16 * k;
+        const float a = rd<float>(p), b = rd<float>(p + 4), c = rd<float>(p + 8), w = rd<float>(p + 12);
+        // Corner farthest along -normal (the game tests "not negative": a NaN counts as positive)...
+        const float nx = !(a < 0) ? lo[0] : hi[0];
+        const float ny = !(b < 0) ? lo[1] : hi[1];
+        const float nz = !(c < 0) ? lo[2] : hi[2];
+        float near = ny * b;
+        near = near + nx * a;
+        near = near + nz * c;
+        near = w + near;
+        if (near > 0) {
+            result = 2;  // the whole box is on the outer side of this plane
+            break;
+        }
+        // ... and corner farthest along +normal ("greater than zero": a NaN counts as negative).
+        const float px = a > 0 ? hi[0] : lo[0];
+        const float py = b > 0 ? hi[1] : lo[1];
+        const float pz = c > 0 ? hi[2] : lo[2];
+        float far = py * b;
+        far = far + px * a;
+        far = far + pz * c;
+        far = w + far;
+        if (far > 0) result = 1;
+    }
+    j.r()[0] = result;
+    cpu::continue_at(j, j.r()[14]);
+}
+
 void patch_game(elf::Module* m) {
     if (m->name != "libSparkApp.so") return;
 
@@ -139,22 +191,61 @@ void patch_game(elf::Module* m) {
             ZLOGW("perf: lua_asynchronous_gc_step not patched (unexpected code)");
         }
     }
+
+    if (enabled("frustum")) {
+        gaddr fn = export_of(m, "_ZNK12geOctreeNodeI12geMeshEntityE22GetFrustumIntersectionERK16geAxisAlignedBoxPK9geVector4f");
+        gaddr center = export_of(m, "_ZNK16geAxisAlignedBox9GetCenterEv");
+        gaddr extent = export_of(m, "_ZNK16geAxisAlignedBox9GetExtentEv");
+        gaddr a = fn & ~1u;
+        // push {r4-r6, lr}; mov r0, r1; vpush {d8, d9}; mov r5, r1; mov r4, r2; vmov s19, r3; bl GetCenter; ...
+        // and the box layout read by GetCenter (bx lr: center at +0) and GetExtent (adds r0, #12; bx lr).
+        if (fn && center && extent && code_is(a, {0xb570, 0x4608, 0xed2d, 0x8b04, 0x460d, 0x4614, 0xee09, 0x3a90}) &&
+            code_is(center & ~1u, {0x4770}) && code_is(extent & ~1u, {0x300c, 0x4770}) &&
+            cpu::install_thumb_replace_hook(a | 1, &frustum_intersection, "GetFrustumIntersection")) {
+            ZLOGI("perf: octree frustum test runs natively");
+        } else {
+            ZLOGW("perf: GetFrustumIntersection not patched (unexpected code)");
+        }
+    }
 }
 
 }  // namespace
 
-const char kFps60Lua[] = R"LUA(
+namespace {
+
+// Sets the game's frame rate target to FPS (the frame limiter of its game loop and the target of the next levels).
+const char kFpsLua[] = R"LUA(
+local fps = FPS
 local P = rawget(_G, "GP") and GP.PARAMS
-if P and type(P.FpsClampingTarget) == "number" and P.FpsClampingTarget < 60 then P.FpsClampingTarget = 60 end
+if P and type(P.FpsClampingTarget) == "number" and P.FpsClampingTarget ~= fps then P.FpsClampingTarget = fps end
 local mp = rawget(_G, "MainProcess")
 if mp then
   local ok, loop = pcall(mp.GetEntity, mp, "TagGameLoop")
-  if ok and type(loop) == "table" and loop.IsFixedTimeStep and type(loop.TargetElapsedTime) == "number"
-      and loop.TargetElapsedTime > 1 / 59 then
-    loop.TargetElapsedTime = 1 / 60
+  if ok and type(loop) == "table" and loop.IsFixedTimeStep and type(loop.TargetElapsedTime) == "number" then
+    local d = loop.TargetElapsedTime - 1 / fps
+    if d > 1e-6 or d < -1e-6 then loop.TargetElapsedTime = 1 / fps end
   end
 end
 )LUA";
+
+std::atomic<int> g_target_fps{60};
+bool g_fixed_fps = false;
+
+std::string make_fps_chunk() {
+    std::string lua = kFpsLua;
+    lua.replace(lua.find("FPS"), 3, std::to_string(g_target_fps.load(std::memory_order_relaxed)));
+    return lua;
+}
+
+}  // namespace
+
+int target_fps() { return g_target_fps.load(std::memory_order_relaxed); }
+
+bool fixed_fps() { return g_fixed_fps; }
+
+void set_target_fps(int fps) {
+    if (!g_fixed_fps && fps >= 30 && fps <= 240) g_target_fps.store(fps, std::memory_order_relaxed);
+}
 
 void init_perf_patches() {
     elf::add_patch_hook(&patch_game);
@@ -166,9 +257,17 @@ void init_perf_patches() {
     }
     // The game runs its 3D scenes at 30 frames per second on phones (GP.PARAMS.FpsClampingTarget, read when a level
     // is created to set the game loop's frame time; menus already run at 60). Its clock follows real time (the
-    // global Dt is the measured frame time), so 60 only makes it smoother.
+    // global Dt is the measured frame time), so a higher target only makes it smoother. The target is the
+    // display's highest refresh rate, once the game's window exists (android_glue.cpp); the property
+    // debug.acp64.fps (30 to 240) fixes it instead.
+    char v[PROP_VALUE_MAX] = {};
+    if (__system_property_get("debug.acp64.fps", v) > 0 && atoi(v) >= 30 && atoi(v) <= 240) {
+        g_target_fps = atoi(v);
+        g_fixed_fps = true;
+    }
     if (enabled("fps60")) {
-        cheat::add_periodic_lua("fps60", kFps60Lua, 2000);
+        cheat::add_periodic_lua("fps", &make_fps_chunk, 2000);
+        ZLOGI("perf: frame rate target %d fps%s", g_target_fps.load(), g_fixed_fps ? " (fixed)" : " until the display is known");
     }
 }
 

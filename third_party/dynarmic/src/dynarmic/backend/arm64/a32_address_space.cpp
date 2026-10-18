@@ -158,6 +158,9 @@ static void* EmitExclusiveWriteCallTrampoline(oaknut::CodeGenerator& code, const
 A32AddressSpace::A32AddressSpace(const A32::UserConfig& conf)
         : AddressSpace(conf.code_cache_size)
         , conf(conf) {
+    if (conf.HasOptimization(OptimizationFlag::FastDispatch)) {
+        fast_dispatch_table = std::make_unique<FastDispatchEntry[]>(size_t{1} << fast_dispatch_table_bits);
+    }
     EmitPrelude();
 }
 
@@ -323,7 +326,10 @@ void A32AddressSpace::EmitPrelude() {
         code.BR(X0);
 
         const auto fn = [](A32AddressSpace& self, A32JitState& context) -> CodePtr {
-            return self.GetOrEmit(context.GetLocationDescriptor());
+            const IR::LocationDescriptor descriptor = context.GetLocationDescriptor();
+            const CodePtr code_ptr = self.GetOrEmit(descriptor);
+            self.FastDispatchInsert(descriptor, code_ptr);
+            return code_ptr;
         };
 
         code.align(8);
@@ -411,6 +417,8 @@ EmitConfig A32AddressSpace::GetEmitConfig() {
         .coprocessors = conf.coprocessors,
 
         .very_verbose_debugging_output = conf.very_verbose_debugging_output,
+
+        .fast_dispatch_table_pointer = mcl::bit_cast<u64>(fast_dispatch_table.get()),
     };
 }
 

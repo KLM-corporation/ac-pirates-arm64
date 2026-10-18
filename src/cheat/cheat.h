@@ -37,6 +37,8 @@ void set_notifier(Notifier notifier);
 void add_startup_lua(const std::string& name, const std::string& source);
 // Lua chunk run on the game's Lua thread every `period_ms` (same use).
 void add_periodic_lua(const std::string& name, const std::string& source, int period_ms);
+// Same, with the chunk's source produced by `make_source` at each run (called on the game's Lua thread).
+void add_periodic_lua(const std::string& name, std::string (*make_source)(), int period_ms);
 
 // Infinite resources: the player's gold, wood, supplies and books are topped up to the game's own limits.
 void set_infinite_resources(bool on);

@@ -7,4 +7,11 @@ namespace zb::game {
 // Registers the patches with the ELF loader (call before the game library is loaded).
 void init_perf_patches();
 
+// Frame rate the game aims for (frames per second).
+int target_fps();
+// True when the property debug.acp64.fps fixes it.
+bool fixed_fps();
+// Changes it (to the display's refresh rate); ignored when it is fixed.
+void set_target_fps(int fps);
+
 }  // namespace zb::game

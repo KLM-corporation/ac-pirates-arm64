@@ -40,6 +40,15 @@ struct EmitContext;
 
 using CodePtr = std::byte*;
 
+// Fast dispatch: a direct-mapped table from guest location descriptors to host code, filled by the dispatcher and
+// read by the code emitted for indirect branches, so that they reach their target block without going back to the
+// dispatcher. Indexed by bits 1..16 of the guest PC.
+struct FastDispatchEntry {
+    u64 location_descriptor = ~u64{0};
+    CodePtr code_ptr = nullptr;
+};
+constexpr size_t fast_dispatch_table_bits = 16;
+
 enum class LinkTarget {
     ReturnToDispatcher,
     ReturnFromRunCode,
@@ -161,6 +170,9 @@ struct EmitConfig {
 
     // Debugging
     bool very_verbose_debugging_output;
+
+    // Fast dispatch table (FastDispatchEntry[1 << fast_dispatch_table_bits]), 0 when not used
+    u64 fast_dispatch_table_pointer = 0;
 };
 
 EmittedBlockInfo EmitArm64(oaknut::CodeGenerator& code, IR::Block block, const EmitConfig& emit_conf, FastmemManager& fastmem_manager);

@@ -204,23 +204,41 @@ the game never releases those fingers: its touch input stays stuck (the wheel no
 outline) until it restarts. `android_glue.cpp` therefore replaces the cancel, for the game, with the release of each
 listed finger (`POINTER_UP` then `UP`, `LiftEvent`), and wakes up the game's input loop so that it reads them.
 
-## Performance: 60 fps in 3D
+## Performance: up to 144 fps
 
-Measured on the REDMAGIC NX799J (Snapdragon 8 Elite), display at 60 Hz for the game, frames actually presented
-(`tools/fps_sample.py`, SurfaceFlinger timestamps):
+The game aims for the display's highest refresh rate, read from Android when its window is created (144 Hz on the
+REDMAGIC NX799J, 120 Hz on many phones), and asks Android to run the display at that rate for its window
+(`ANativeWindow_setFrameRate`, Android 11 and newer): some phones give games 60 Hz unless they ask.
+`adb shell setprop debug.acp64.fps 60` (30 to 240) fixes another frame rate, for instance to save battery, and
+`adb shell setprop debug.acp64.fps ''` goes back to automatic (read when the game starts).
+
+Frames actually presented on the REDMAGIC NX799J (Snapdragon 8 Elite), `tools/fps_sample.py` (SurfaceFlinger
+timestamps). With the display at 60 Hz:
 
 | Version | Sailing at sea (3D) | Game thread |
 |---|---|---|
 | Before (original game capped at 30) | 30 fps; forced to 60: ~52 fps | 95% (at 60 Hz) |
 | After | **59.9 fps, no late frame** (43 s of sailing, 60 s with fishing) | ~40% |
 
-The game also runs its 3D scenes at 60 (`GP.PARAMS.FpsClampingTarget = 60`, and `TargetElapsedTime = 1/60` on the
-game loop, `fps60` in `src/game/perf_patches.cpp`). Its clock follows real time (the Lua global `Dt` is the measured
-frame time; `AbsoluteTime` advances by 12.05 s in 12.05 real seconds), so 60 does not change the game's speed. The
-engine actually defaults to 60 (`GameLoop.TargetElapsedTime = 1/60`); the phones of the time were set to 30.
+With the display at 144 Hz:
 
-What profiling showed (game thread, before) and the fixes (`src/game/perf_patches.cpp`, each one can be turned off
-with `adb shell setprop debug.acp64.<name> 0` to compare):
+| Scene | Frames per second |
+|---|---|
+| Menus, in-engine cutscenes | **144**, no late frame |
+| Tutorial bay, sailing and turning | 140 to 144 |
+| Open sea with many islands (Scorpion Reef) | ~124: the game thread is saturated (~8 ms per frame for a 6.9 ms budget) |
+
+On this phone, Android keeps the display at 144 Hz while the game runs, even when the game asks for 120 or 60: where
+the game cannot keep up, some frames stay on screen for two refreshes instead of one.
+
+The game also runs its 3D scenes at that rate (`GP.PARAMS.FpsClampingTarget`, and `TargetElapsedTime` on the game
+loop, `fps60` in `src/game/perf_patches.cpp`). Its clock follows real time (the Lua global `Dt` is the measured frame
+time; `AbsoluteTime` advances by 12.05 s in 12.05 real seconds at 60 fps, by 13.061 s in 13.055 s at 144 fps), so the
+frame rate does not change the game's speed. The engine actually defaults to 60 (`GameLoop.TargetElapsedTime = 1/60`);
+the phones of the time were set to 30.
+
+What profiling showed (game thread) and the fixes (`src/game/perf_patches.cpp`, `src/cpu.cpp`; each one can be turned
+off with `adb shell setprop debug.acp64.<name> 0` to compare):
 
 - **Lua garbage collector (~50% of the game thread)**: the engine runs LuaJIT's GC on a helper thread during
   rendering (`StartAsyncGarbageCollection` / `StopAsyncGarbageCollection`), but `lua_asynchronous_gc_step` forces a
@@ -240,6 +258,16 @@ with `adb shell setprop debug.acp64.<name> 0` to compare):
 - **Java attachments**: `SparkSystem::JNIEnvWrapper` attached and detached `android_main` from the Java VM every
   16 ms (a new `java.lang.Thread` each time). The detach requested by the game no longer really detaches; the thread
   is detached when it exits (`jni_bridge.cpp`).
+- **Octree frustum culling (~14% of the game thread at 144 fps)**: `geOctreeNode<geMeshEntity>::GetFrustumIntersection`,
+  called for every node and object of the scene at every frame, spent most of its time in the four tiny calls it
+  makes and their returns, each one a block lookup for Dynarmic. `frustum`: the same computation runs natively, in
+  the same order and without fused multiply-adds, so the results are identical; ~2% left.
+- **Indirect branches (~9%)**: Dynarmic's arm64 backend went back to its dispatcher (a C++ hash map) for every
+  indirect branch, and the Lua interpreter ends every bytecode with one. `fastdispatch`: a fast dispatch table looked
+  up by the generated code itself (added to our copy of Dynarmic, see `third_party/README.md`); open sea: 117 → 124 fps.
+
+Where the time goes now (open sea, game thread): the Lua interpreter ~40%, character animation ~10%, the runtime
+~12%, the GPU driver 5%.
 
 Measurement tools (with `debug.acp64.verbose=1`): every second, `eglSwapBuffers` logs fps, work time, worst frame,
 then the most called imported functions (`calls/s`) and the blocking waits with their caller (`waits:`), as well as

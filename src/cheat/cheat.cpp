@@ -220,6 +220,7 @@ struct PeriodicChunk {
     std::string name;
     std::string source;
     int period_ms;
+    std::string (*make_source)() = nullptr;  // when set, produces the source at each run
     int64_t last = 0;   // guarded by g_lock
     int failures = 0;
 };
@@ -256,7 +257,7 @@ void tick(JitCtx& j, u32 L) {
         if (!lk) break;
         c.last = now;
         t_busy = true;
-        std::string err = run_chunk(L, c.source, ("=" + c.name).c_str());
+        std::string err = run_chunk(L, c.make_source ? c.make_source() : c.source, ("=" + c.name).c_str());
         t_busy = false;
         if (!err.empty()) {
             c.failures++;
@@ -346,6 +347,10 @@ void add_startup_lua(const std::string& name, const std::string& source) {
 
 void add_periodic_lua(const std::string& name, const std::string& source, int period_ms) {
     g_periodic_chunks.push_back({name, source, period_ms});
+}
+
+void add_periodic_lua(const std::string& name, std::string (*make_source)(), int period_ms) {
+    g_periodic_chunks.push_back({name, std::string(), period_ms, make_source});
 }
 
 void set_data_dir(const std::string& dir) { g_dir = dir; }

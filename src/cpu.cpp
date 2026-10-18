@@ -278,6 +278,7 @@ struct CtxStorage {
 std::unordered_map<JitCtx*, CtxStorage> g_storage;  // guarded by g_threads_lock
 
 bool g_fastmem = true;
+bool g_fast_dispatch = true;
 
 std::unique_ptr<JitCtx> make_ctx(GuestThread* t, int depth) {
     auto ctx = std::make_unique<JitCtx>();
@@ -298,6 +299,9 @@ std::unique_ptr<JitCtx> make_ctx(GuestThread* t, int depth) {
     c.optimizations = Dynarmic::all_safe_optimizations | Dynarmic::OptimizationFlag::Unsafe_ReducedErrorFP |
                       Dynarmic::OptimizationFlag::Unsafe_InaccurateNaN |
                       Dynarmic::OptimizationFlag::Unsafe_IgnoreStandardFPCRValue;
+    // Indirect branches (the Lua interpreter ends every bytecode with one) look their target up in a table in the
+    // generated code instead of going back to the dispatcher (implemented in our copy of Dynarmic's arm64 backend).
+    if (!g_fast_dispatch) c.optimizations &= ~Dynarmic::OptimizationFlag::FastDispatch;
     c.unsafe_optimizations = true;
     c.page_table = mem::page_table();
     if (g_fastmem) {
@@ -431,6 +435,8 @@ void init() {
         char v[PROP_VALUE_MAX] = {};
         if (__system_property_get("debug.acp64.fastmem", v) > 0 && v[0] == '0') g_fastmem = false;
         ZLOGI("JIT memory access: %s", g_fastmem ? "direct (fastmem)" : "page table");
+        if (__system_property_get("debug.acp64.fastdispatch", v) > 0 && v[0] == '0') g_fast_dispatch = false;
+        ZLOGI("JIT indirect branches: %s", g_fast_dispatch ? "fast dispatch table" : "dispatcher");
     }
     std::set_terminate([] {
         if (GuestThread* t = current_thread_if_any(); t && t->top()) dump_state(*t->top(), "std::terminate");

@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "../game/perf_patches.h"
 #include "../hle/hle.h"
 #include "../mem.h"
 #include "android_glue.h"
@@ -102,6 +103,8 @@ u32 e_SwapBuffers(u32 d, u32 s) {
     if (!g_debug) return eglSwapBuffers(D(d), S(s));
     static int64_t window_start = 0, in_swap = 0, last_end = 0, busy = 0, worst = 0;
     static int frames = 0, slow = 0;
+    // A frame is late when it takes more than 1.5 frame periods of the target rate.
+    const int64_t late_us = 1500000 / game::target_fps();
     int64_t t0 = now_us();
     u32 r = eglSwapBuffers(D(d), S(s));
     int64_t t1 = now_us();
@@ -109,7 +112,7 @@ u32 e_SwapBuffers(u32 d, u32 s) {
         int64_t frame = t1 - last_end;  // whole frame, swap included
         worst = std::max(worst, frame);
         if (frame > 50000) ZLOGI("long frame: %.1f ms (%.1f ms before the swap)", frame / 1000.0, (t0 - last_end) / 1000.0);
-        if (frame > 17500) slow++;
+        if (frame > late_us) slow++;
         busy += t0 - last_end;
     }
     last_end = t1;
@@ -120,8 +123,8 @@ u32 e_SwapBuffers(u32 d, u32 s) {
         double n = frames;
         double secs = (t1 - window_start) / 1e6;
         ZLOGI("swap: %d frames in %.2fs = %.1f fps; per frame: %.1f ms of work, %.1f ms waiting in eglSwapBuffers; "
-              "worst %.1f ms, %d frames over 17.5 ms",
-              frames, secs, n / secs, busy / n / 1000.0, in_swap / n / 1000.0, worst / 1000.0, slow);
+              "worst %.1f ms, %d frames over %.1f ms",
+              frames, secs, n / secs, busy / n / 1000.0, in_swap / n / 1000.0, worst / 1000.0, slow, late_us / 1000.0);
         cpu::log_call_stats(secs);
         window_start = t1;
         in_swap = busy = worst = 0;

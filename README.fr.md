@@ -202,23 +202,41 @@ aucun contour blanc) jusqu'au redémarrage. `android_glue.cpp` remplace donc l'a
 relâchement de chaque doigt listé (`POINTER_UP` puis `UP`, `LiftEvent`), et réveille la boucle d'entrée du jeu
 pour qu'elle les lise.
 
-## Performances : 60 images/s en 3D
+## Performances : jusqu'à 144 images/s
 
-Mesures sur le REDMAGIC NX799J (Snapdragon 8 Elite), écran à 60 Hz pour le jeu, images réellement affichées
-(`tools/fps_sample.py`, horodatages de SurfaceFlinger) :
+Le jeu vise la fréquence maximale de l'écran, lue auprès d'Android quand sa fenêtre est créée (144 Hz sur le
+REDMAGIC NX799J, 120 Hz sur beaucoup de téléphones), et demande à Android de faire tourner l'écran à cette fréquence
+pour sa fenêtre (`ANativeWindow_setFrameRate`, Android 11 et plus) : certains téléphones donnent 60 Hz aux jeux qui ne
+demandent rien. `adb shell setprop debug.acp64.fps 60` (de 30 à 240) fixe une autre fréquence, par exemple pour
+économiser la batterie, et `adb shell setprop debug.acp64.fps ''` revient au réglage automatique (lu au lancement
+du jeu).
+
+Images réellement affichées sur le REDMAGIC NX799J (Snapdragon 8 Elite), `tools/fps_sample.py` (horodatages de
+SurfaceFlinger). Écran à 60 Hz :
 
 | Version | Navigation en mer (3D) | Thread du jeu |
 |---|---|---|
 | Avant (jeu d'origine plafonné à 30) | 30 images/s ; forcé à 60 : ~52 images/s | 95 % (à 60 Hz) |
 | Après | **59,9 images/s, aucune image en retard** (43 s de navigation, 60 s avec la pêche) | ~40 % |
 
-Le jeu passe aussi les scènes 3D à 60 (`GP.PARAMS.FpsClampingTarget = 60`, et `TargetElapsedTime = 1/60` sur la
-boucle de jeu, `fps60` dans `src/game/perf_patches.cpp`). Son horloge suit le temps réel (la globale Lua `Dt` est la
-durée mesurée de l'image ; `AbsoluteTime` avance de 12,05 s pour 12,05 s réelles), donc 60 ne change pas la vitesse
-du jeu. Le moteur prévoit d'ailleurs 60 par défaut (`GameLoop.TargetElapsedTime = 1/60`) ; les téléphones de
-l'époque étaient réglés à 30.
+Écran à 144 Hz :
 
-Ce que le profilage a montré (thread du jeu, avant) et les corrections (`src/game/perf_patches.cpp`, chacune
+| Scène | Images par seconde |
+|---|---|
+| Menus, cinématiques calculées par le moteur | **144**, aucune image en retard |
+| Baie du tutoriel, en naviguant et en virant | de 140 à 144 |
+| Pleine mer avec beaucoup d'îles (Scorpion Reef) | ~124 : le thread du jeu est saturé (~8 ms par image pour 6,9 ms disponibles) |
+
+Sur ce téléphone, Android garde l'écran à 144 Hz pendant le jeu, même quand le jeu demande 120 ou 60 : là où le jeu
+ne suit pas, certaines images restent affichées deux rafraîchissements au lieu d'un.
+
+Le jeu passe aussi les scènes 3D à cette fréquence (`GP.PARAMS.FpsClampingTarget`, et `TargetElapsedTime` sur la
+boucle de jeu, `fps60` dans `src/game/perf_patches.cpp`). Son horloge suit le temps réel (la globale Lua `Dt` est la
+durée mesurée de l'image ; `AbsoluteTime` avance de 12,05 s pour 12,05 s réelles à 60 images/s, de 13,061 s pour
+13,055 s à 144), donc la fréquence ne change pas la vitesse du jeu. Le moteur prévoit d'ailleurs 60 par défaut
+(`GameLoop.TargetElapsedTime = 1/60`) ; les téléphones de l'époque étaient réglés à 30.
+
+Ce que le profilage a montré (thread du jeu) et les corrections (`src/game/perf_patches.cpp`, `src/cpu.cpp` ; chacune
 désactivable avec `adb shell setprop debug.acp64.<nom> 0` pour comparer) :
 
 - **Ramasse-miettes Lua (~50 % du thread du jeu)** : le moteur fait tourner le GC de LuaJIT sur un thread annexe
@@ -240,6 +258,18 @@ désactivable avec `adb shell setprop debug.acp64.<nom> 0` pour comparer) :
 - **Attachements Java** : `SparkSystem::JNIEnvWrapper` attachait et détachait `android_main` de la VM Java toutes les
   16 ms (un nouveau `java.lang.Thread` à chaque fois). Le détachement demandé par le jeu ne détache plus vraiment ; le
   thread est détaché quand il se termine (`jni_bridge.cpp`).
+- **Élimination des objets hors champ (~14 % du thread du jeu à 144 images/s)** :
+  `geOctreeNode<geMeshEntity>::GetFrustumIntersection`, appelée pour chaque nœud et chaque objet de la scène à chaque
+  image, passait l'essentiel de son temps dans les quatre petits appels qu'elle fait et leurs retours, chacun une
+  recherche de bloc pour Dynarmic. `frustum` : le même calcul tourne en natif, dans le même ordre et sans
+  multiplication-addition fusionnée, donc avec des résultats identiques ; il en reste ~2 %.
+- **Sauts indirects (~9 %)** : le moteur arm64 de Dynarmic repassait par son répartiteur (une table de hachage C++) à
+  chaque saut indirect, et l'interpréteur Lua en termine chaque instruction. `fastdispatch` : une table de
+  répartition rapide consultée directement par le code généré (ajoutée à notre copie de Dynarmic, voir
+  `third_party/README.md`) ; pleine mer : de 117 à 124 images/s.
+
+Où part le temps maintenant (pleine mer, thread du jeu) : l'interpréteur Lua ~40 %, l'animation des personnages
+~10 %, le runtime ~12 %, le pilote graphique 5 %.
 
 Outils de mesure (avec `debug.acp64.verbose=1`) : chaque seconde, `eglSwapBuffers` journalise images/s, temps de
 travail, pire image, puis les fonctions importées les plus appelées (`calls/s`) et les attentes bloquantes avec leur

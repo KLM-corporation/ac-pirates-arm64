@@ -5,7 +5,9 @@
 
 #pragma once
 
+#include <algorithm>
 #include <map>
+#include <memory>
 #include <optional>
 
 #include <mcl/stdint.hpp>
@@ -43,6 +45,15 @@ public:
 
     void ClearCache();
 
+    // Records where a guest location's code is, for the fast dispatch of indirect branches (no-op without a table).
+    void FastDispatchInsert(IR::LocationDescriptor descriptor, CodePtr code_ptr) {
+        if (!fast_dispatch_table) {
+            return;
+        }
+        const size_t index = (descriptor.Value() >> 1) & ((size_t{1} << fast_dispatch_table_bits) - 1);
+        fast_dispatch_table[index] = FastDispatchEntry{descriptor.Value(), code_ptr};
+    }
+
     void DumpDisassembly() const;
 
     template<typename F>
@@ -78,9 +89,18 @@ protected:
 
     FakeCall FastmemCallback(u64 host_pc);
 
+    void FastDispatchClear() {
+        if (fast_dispatch_table) {
+            std::fill_n(fast_dispatch_table.get(), size_t{1} << fast_dispatch_table_bits, FastDispatchEntry{});
+        }
+    }
+
     const size_t code_cache_size;
     oaknut::CodeBlock mem;
     oaknut::CodeGenerator code;
+
+    // Allocated by the frontends that use fast dispatch.
+    std::unique_ptr<FastDispatchEntry[]> fast_dispatch_table;
 
     // A IR::LocationDescriptor will have one current CodePtr.
     // However, there can be multiple other CodePtrs which are older, previously invalidated blocks.

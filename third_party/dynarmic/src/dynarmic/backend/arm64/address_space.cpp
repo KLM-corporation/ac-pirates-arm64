@@ -85,11 +85,13 @@ void AddressSpace::InvalidateBasicBlocks(const tsl::robin_set<IR::LocationDescri
 
         block_entries.erase(iter);
     }
+    FastDispatchClear();
 
     ProtectCodeMemory();
 }
 
 void AddressSpace::ClearCache() {
+    FastDispatchClear();
     block_entries.clear();
     reverse_block_entries.clear();
     block_infos.clear();

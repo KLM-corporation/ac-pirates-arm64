@@ -93,6 +93,36 @@ void EmitA32Terminal(oaknut::CodeGenerator& code, EmitContext& ctx, IR::Term::Li
     EmitRelocation(code, ctx, LinkTarget::ReturnToDispatcher);
 }
 
+// Looks the current guest location up in the fast dispatch table and jumps to its block when the dispatcher has
+// already recorded it there; falls through otherwise. Like block linking, it does not jump while a halt is pending.
+static void EmitA32FastDispatch(oaknut::CodeGenerator& code, EmitContext& ctx, bool is_single_step) {
+    if (!ctx.conf.HasOptimization(OptimizationFlag::FastDispatch) || !ctx.conf.fast_dispatch_table_pointer || is_single_step) {
+        return;
+    }
+    oaknut::Label fail;
+
+    if (ctx.conf.enable_cycle_counting) {
+        code.CMP(Xticks, 0);
+        code.B(LE, fail);
+    } else {
+        code.LDAR(Wscratch0, Xhalt);
+        code.CBNZ(Wscratch0, fail);
+    }
+
+    static_assert(offsetof(A32JitState, regs) + 16 * sizeof(u32) == offsetof(A32JitState, upper_location_descriptor));
+    code.LDUR(X0, Xstate, offsetof(A32JitState, regs) + 15 * sizeof(u32));  // the full location descriptor
+    code.MOV(X1, ctx.conf.fast_dispatch_table_pointer);
+    code.UBFX(X2, X0, 1, fast_dispatch_table_bits);
+    static_assert(sizeof(FastDispatchEntry) == 16);
+    code.ADD(X1, X1, X2, LSL, 4);
+    code.LDP(X2, X3, X1);
+    code.CMP(X0, X2);
+    code.B(NE, fail);
+    code.BR(X3);
+
+    code.l(fail);
+}
+
 void EmitA32Terminal(oaknut::CodeGenerator& code, EmitContext& ctx, IR::Term::PopRSBHint, IR::LocationDescriptor, bool is_single_step) {
     if (ctx.conf.HasOptimization(OptimizationFlag::ReturnStackBuffer) && !is_single_step) {
         oaknut::Label fail;
@@ -115,13 +145,14 @@ void EmitA32Terminal(oaknut::CodeGenerator& code, EmitContext& ctx, IR::Term::Po
         code.l(fail);
     }
 
+    // The return was not predicted by the return stack buffer: try the fast dispatch table before the dispatcher.
+    EmitA32FastDispatch(code, ctx, is_single_step);
     EmitRelocation(code, ctx, LinkTarget::ReturnToDispatcher);
 }
 
-void EmitA32Terminal(oaknut::CodeGenerator& code, EmitContext& ctx, IR::Term::FastDispatchHint, IR::LocationDescriptor, bool) {
+void EmitA32Terminal(oaknut::CodeGenerator& code, EmitContext& ctx, IR::Term::FastDispatchHint, IR::LocationDescriptor, bool is_single_step) {
+    EmitA32FastDispatch(code, ctx, is_single_step);
     EmitRelocation(code, ctx, LinkTarget::ReturnToDispatcher);
-
-    // TODO: Implement FastDispatchHint optimization
 }
 
 void EmitA32Terminal(oaknut::CodeGenerator& code, EmitContext& ctx, IR::Term::If terminal, IR::LocationDescriptor initial_location, bool is_single_step) {
