@@ -160,8 +160,30 @@ void frustum_intersection(JitCtx& j) {
     cpu::continue_at(j, j.r()[14]);
 }
 
+int g_msaa = 0;  // MSAA sample count set by the quality chunk (0: the game's)
+
 void patch_game(elf::Module* m) {
     if (m->name != "libSparkApp.so") return;
+
+    // The engine keeps the sample count asked for a render target or a depth buffer only on an OpenGL ES 3 context
+    // (geOesRenderer::IsOES3, false here since the game asks EGL for ES 2), and makes it 1 otherwise, although its
+    // ES 2 path renders them completely (GL_EXT_multisampled_render_to_texture, which the renderer loads). Both
+    // checks become nops.
+    if (g_msaa > 1) {
+        gaddr depth = export_of(m, "_ZN13geOesRenderer24CreateDepthStencilBufferEjjj") & ~1u;
+        gaddr tex = export_of(m, "_ZN13geOesRenderer13CreateTextureEjjjjj15geTextureFormatbbjbb") & ~1u;
+        // ldrb.w r3, [r0, #0x7fc]; cmp r3, #0; it eq; moveq r4, #1   (r4: the sample count)
+        const std::initializer_list<u16> check = {0xf890, 0x37fc, 0x2b00, 0xbf08, 0x2401};
+        if (depth && tex && code_is(depth + 0x10, check) && code_is(tex + 0x22, check)) {
+            for (gaddr a : {depth + 0x16, tex + 0x28}) {
+                wr<u16>(a, 0xbf00);  // nop
+                wr<u16>(a + 2, 0xbf00);
+            }
+            ZLOGI("display: MSAA render targets allowed on the OpenGL ES 2 context");
+        } else {
+            ZLOGW("display: MSAA render targets not allowed (unexpected code)");
+        }
+    }
 
     if (enabled("idle")) {
         gaddr fn = export_of(m, "_Z13IdleCurThreadNSt6chrono8durationIxSt5ratioILx1ELx1000000EEEE");
@@ -237,6 +259,36 @@ std::string make_fps_chunk() {
     return lua;
 }
 
+// Sets the sample count (MSAA) and the resolution scale of the 3D scenes in the game's parameters: the PostFX of
+// each level reads them when the level loads to create the render target the 3D scene is drawn into.
+const char kQualityLua[] = R"LUA(
+local msaa, scale = MSAA, SCALE
+local mp = rawget(_G, "MainProcess")
+local list = mp and mp._SubProcessList
+if type(list) == "table" then
+  for _, p in ipairs(list) do
+    for _, k in ipairs({ "Params", "PARAMS" }) do
+      local t = type(p) == "table" and rawget(p, k)
+      if type(t) == "table" and type(t.RenderScaleFactor) == "number" then
+        if msaa and t.MsaaSampleCount ~= msaa then t.MsaaSampleCount = msaa end
+        if scale and t.RenderScaleFactor ~= scale then t.RenderScaleFactor = scale end
+      end
+    end
+  end
+end
+)LUA";
+
+// Value of debug.acp64.<name> if it is set and a number, else `fallback`.
+int prop_int(const char* name, int fallback) {
+    char key[PROP_NAME_MAX];
+    snprintf(key, sizeof(key), "debug.acp64.%s", name);
+    char v[PROP_VALUE_MAX] = {};
+    if (__system_property_get(key, v) <= 0) return fallback;
+    char* end = nullptr;
+    long n = strtol(v, &end, 10);
+    return end != v ? static_cast<int>(n) : fallback;
+}
+
 }  // namespace
 
 int target_fps() { return g_target_fps.load(std::memory_order_relaxed); }
@@ -268,6 +320,27 @@ void init_perf_patches() {
     if (enabled("fps60")) {
         cheat::add_periodic_lua("fps", &make_fps_chunk, 2000);
         ZLOGI("perf: frame rate target %d fps%s", g_target_fps.load(), g_fixed_fps ? " (fixed)" : " until the display is known");
+    }
+    // On a phone it does not know, the game takes its Android "HD" profile (DeviceParameters.lua,
+    // ParamsConfig_Android_HD): 3D scenes drawn at 62.5% of the screen resolution and stretched to it, without
+    // anti-aliasing, so edges are jagged and blurry. Its own top profile (ParamsConfig_HD) uses the full resolution
+    // and 4x MSAA, which the engine renders with GL_EXT_multisampled_render_to_texture (resolved in the GPU's tile
+    // memory, nearly free on phones). The profile is chosen at startup and read when each level loads, so the chunk
+    // sets it every 2 seconds. debug.acp64.msaa (1, 2 or 4 samples) and debug.acp64.renderscale (25 to 100, in
+    // percent) change these values; 0 keeps the game's.
+    const int msaa = prop_int("msaa", 4);
+    const int scale = prop_int("renderscale", 100);
+    const bool set_msaa = msaa == 1 || msaa == 2 || msaa == 4;
+    const bool set_scale = scale >= 25 && scale <= 100;
+    if (set_msaa) g_msaa = msaa;
+    if (set_msaa || set_scale) {
+        std::string lua = kQualityLua;
+        lua.replace(lua.find("MSAA"), 4, set_msaa ? std::to_string(msaa) : "nil");
+        lua.replace(lua.find("SCALE"), 5, set_scale ? std::to_string(scale / 100.0) : "nil");
+        cheat::add_periodic_lua("quality", lua, 2000);
+        const std::string samples = set_msaa ? std::to_string(msaa) + " MSAA samples" : "the game's MSAA";
+        const std::string share = set_scale ? std::to_string(scale) + "% of the screen resolution" : "the game's resolution";
+        ZLOGI("display: 3D scenes with %s, at %s", samples.c_str(), share.c_str());
     }
 }
 

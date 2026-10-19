@@ -325,12 +325,17 @@ void x_GetProgramBinaryOES(u32 p, i32 bs, gaddr len, gaddr fmt, gaddr bin) {
 void x_ProgramBinaryOES(u32 p, u32 fmt, gaddr bin, i32 len) {
     if (auto f = ext<PFNGLPROGRAMBINARYOESPROC>("glProgramBinaryOES")) f(p, fmt, hp<const void>(bin), len);
 }
+// The game's multisampled render targets (MSAA), created when a level loads: logged.
 void x_RenderbufferStorageMultisampleEXT(u32 t, i32 s, u32 f, i32 w, i32 h) {
-    if (auto fn = ext<PFNGLRENDERBUFFERSTORAGEMULTISAMPLEEXTPROC>("glRenderbufferStorageMultisampleEXT")) fn(t, s, f, w, h);
+    auto fn = ext<PFNGLRENDERBUFFERSTORAGEMULTISAMPLEEXTPROC>("glRenderbufferStorageMultisampleEXT");
+    if (fn) fn(t, s, f, w, h);
+    ZLOGI("MSAA buffer: %d samples, %dx%d, format 0x%x%s", s, w, h, f, fn ? "" : " (no glRenderbufferStorageMultisampleEXT)");
 }
 void x_FramebufferTexture2DMultisampleEXT(u32 t, u32 a, u32 tt, u32 x, i32 l, i32 s) {
-    if (auto fn = ext<PFNGLFRAMEBUFFERTEXTURE2DMULTISAMPLEEXTPROC>("glFramebufferTexture2DMultisampleEXT"))
-        fn(t, a, tt, x, l, s);
+    auto fn = ext<PFNGLFRAMEBUFFERTEXTURE2DMULTISAMPLEEXTPROC>("glFramebufferTexture2DMultisampleEXT");
+    if (fn) fn(t, a, tt, x, l, s);
+    ZLOGI("MSAA render target: texture %u, %d samples, attachment 0x%x%s", x, s, a,
+          fn ? "" : " (no glFramebufferTexture2DMultisampleEXT)");
 }
 
 }  // namespace

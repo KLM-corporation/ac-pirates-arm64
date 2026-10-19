@@ -1,5 +1,6 @@
 // Performance patches for the game's ARM32 code (Assassin's Creed Pirates 2.9.1), installed while the library is
-// loaded. Each one can be turned off with a system property for comparisons (see perf_patches.cpp).
+// loaded, and the frame rate and image quality settings of its 3D scenes. Each one can be turned off with a system
+// property for comparisons (see perf_patches.cpp).
 #pragma once
 
 namespace zb::game {

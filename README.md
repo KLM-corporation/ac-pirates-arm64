@@ -277,6 +277,34 @@ writes the map of each thread's compiled blocks (`path.t<id>`), and `tools/prof_
 attributes the samples to the ARM32 game functions. `tools/goto_sea.sh` takes the game to sea from a fresh start,
 `tools/bench.sh` averages the frame statistics.
 
+## Image quality: full resolution and 4x MSAA
+
+The game picks a quality profile by phone model when it starts (`DeviceParameters.lua`). On a phone it does not know,
+it takes its Android "HD" profile (`ParamsConfig_Android_HD`): 3D scenes are drawn at 62.5% of the screen resolution
+(`RenderScaleFactor`, 1680×760 for a 2688×1216 screen), then stretched to the screen, without anti-aliasing
+(`MsaaSampleCount` = 1). Edges are jagged and blurry, the rigging above all. The game's own top profile
+(`ParamsConfig_HD`) uses the full resolution and 4x MSAA, and the port now does the same (`quality` chunk in
+`src/game/perf_patches.cpp`): it sets both values in the game's parameters, which each level reads when it loads to
+create the render target its 3D scene is drawn into (`PostFX.lua`).
+
+The engine needed a fix as well: it keeps the sample count asked for a render target only on an OpenGL ES 3 context
+(`geOesRenderer::IsOES3`, false because the game asks EGL for ES 2) and silently uses 1 otherwise, although its ES 2
+path is complete: it renders with `GL_EXT_multisampled_render_to_texture`, which phone GPUs resolve in their tile
+memory. The two checks (in `geOesRenderer::CreateTexture` and `CreateDepthStencilBuffer`) are removed. When a level
+loads, the log shows `MSAA render target: ... 4 samples`.
+
+Sailing in Scorpion Reef on the REDMAGIC NX799J at 144 Hz:
+
+| | 3D scene | MSAA | Frames per second | GPU busy (`gpubusy`) |
+|---|---|---|---|---|
+| Game's profile | 1680×760, stretched | none | 113 | ~29% |
+| Port | 2688×1216 | 4x | 119 | ~45% |
+
+No frame lost: the game thread remains the limit, the GPU stays below half its capacity (the two runs were not at
+the same time of day, hence the gap). On a weaker phone, `adb shell setprop debug.acp64.msaa 2` (1, 2 or 4 samples)
+and `adb shell setprop debug.acp64.renderscale 75` (25 to 100, in percent of the screen resolution) lower these
+values; `0` keeps the game's value and `''` goes back to the port's (read when the game starts).
+
 ## Debugging
 
 With `debug.acp64.verbose` at 1 (and `adb shell setprop log.tag.ACP64 V` to see the debug lines), a `probe.lua` file

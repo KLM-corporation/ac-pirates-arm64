@@ -279,6 +279,37 @@ Lua `acp64_profdump(chemin)` écrit la carte des blocs compilés de chaque threa
 `tools/prof_report.py perf.data <carte> <tid>` attribue les échantillons aux fonctions du jeu ARM32.
 `tools/goto_sea.sh` amène le jeu en mer depuis un démarrage, `tools/bench.sh` moyenne les statistiques d'images.
 
+## Qualité d'image : pleine résolution et MSAA 4x
+
+Le jeu choisit un profil de qualité selon le modèle du téléphone au démarrage (`DeviceParameters.lua`). Sur un
+téléphone qu'il ne connaît pas, il prend son profil Android « HD » (`ParamsConfig_Android_HD`) : les scènes 3D sont
+dessinées à 62,5 % de la résolution de l'écran (`RenderScaleFactor`, 1680×760 pour un écran de 2688×1216), puis
+étirées à l'écran, sans anticrénelage (`MsaaSampleCount` = 1). Les bords sont crénelés et flous, surtout les
+cordages. Le meilleur profil du jeu (`ParamsConfig_HD`) utilise la pleine résolution et le MSAA 4x, et le port fait
+maintenant de même (morceau `quality` dans `src/game/perf_patches.cpp`) : il règle ces deux valeurs dans les
+paramètres du jeu, que chaque niveau lit à son chargement pour créer la cible de rendu où sa scène 3D est dessinée
+(`PostFX.lua`).
+
+Il a aussi fallu corriger le moteur : il ne garde le nombre d'échantillons demandé pour une cible de rendu que sur un
+contexte OpenGL ES 3 (`geOesRenderer::IsOES3`, faux car le jeu demande ES 2 à EGL) et met 1 sans rien dire sinon,
+alors que son chemin ES 2 est complet : il dessine avec `GL_EXT_multisampled_render_to_texture`, que les GPU de
+téléphone résolvent dans leur mémoire de tuiles. Les deux contrôles (dans `geOesRenderer::CreateTexture` et
+`CreateDepthStencilBuffer`) sont retirés. Au chargement d'un niveau, le journal affiche
+`MSAA render target: ... 4 samples`.
+
+En navigation à Scorpion Reef sur le REDMAGIC NX799J à 144 Hz :
+
+| | Scène 3D | MSAA | Images/s | GPU occupé (`gpubusy`) |
+|---|---|---|---|---|
+| Profil du jeu | 1680×760, étirée | aucun | 113 | ~29 % |
+| Port | 2688×1216 | 4x | 119 | ~45 % |
+
+Aucune image perdue : le thread du jeu reste la limite, le GPU reste sous la moitié de sa capacité (les deux mesures
+n'étaient pas à la même heure du jeu, d'où l'écart). Sur un téléphone moins puissant,
+`adb shell setprop debug.acp64.msaa 2` (1, 2 ou 4 échantillons) et `adb shell setprop debug.acp64.renderscale 75`
+(25 à 100, en pourcentage de la résolution de l'écran) baissent ces valeurs ; `0` garde la valeur du jeu et `''`
+revient à celle du port (lues au démarrage du jeu).
+
 ## Mise au point
 
 Avec `debug.acp64.verbose` à 1 (et `adb shell setprop log.tag.ACP64 V` pour voir les lignes de débogage), un
